@@ -597,45 +597,8 @@ async function load() {
       localStorage.setItem('tf_shared_lists', JSON.stringify(sharedLists));
     } catch(e) { console.warn('Supabase pull failed, using localStorage cache', e); }
   }
-  if (!tasks.length && !habits.length) seed();
 }
 
-function seed() {
-  const t  = todayStr();
-  const y1 = offset(-1), y2 = offset(-2), y3 = offset(-3), y4 = offset(-4), y5 = offset(-5);
-  function offset(n){ const d=new Date(); d.setDate(d.getDate()+n); return d.toISOString().slice(0,10); }
-
-  tasks = [
-    mk('n8n practice', t, 'medium', 'Practice building n8n automation workflows.', 'gaming',
-       [{id:uid(),title:'Set up local n8n instance',completed:false},{id:uid(),title:'Build first workflow',completed:false}]),
-    mk('Monthly Review on Personal Goals', t, 'high', '', '', []),
-    mk('Update portfolio with latest projects', t, 'critical', 'Add 3 new projects and refresh the skills section.', 'gaming', []),
-    mk('Buy groceries for the week', t, 'medium', '', 'tobuy',
-       [{id:uid(),title:'Vegetables & fruit',completed:false},{id:uid(),title:'Milk & dairy',completed:true}]),
-    mk('Complete coding challenge for interview', t, 'high', '', 'gaming', []),
-    mk('Read lease agreement carefully', t, 'medium', '', 'renting', []),
-    mk('Apply for 3 new jobs', y1, 'critical', '', 'gaming', []),
-    mk('Research neighborhoods in London', y1, 'high', 'Focus on zone 2–3 areas near transport links.', 'uk', []),
-    mk('Pack winter clothes', y2, 'low', '', 'csw', []),
-    mk('Send thank you email', t, 'low', '', '', [], true),
-    mk('Follow up with recruiter', y1, 'medium', '', 'gaming', [], true),
-  ];
-
-  habits = [
-    { id:'h1', name:'Morning Meditation', frequency:'daily', category:'mindfulness', checkIns:[t,y1,y2,y3,y4,y5], createdAt:t },
-    { id:'h2', name:'Exercise 30 min',    frequency:'daily', category:'health',       checkIns:[t,y1,y3,y4,y5],   createdAt:t },
-    { id:'h3', name:'Read 20 pages',      frequency:'daily', category:'learning',     checkIns:[y1,y2,y3],         createdAt:t },
-    { id:'h4', name:'Cold shower',        frequency:'daily', category:'health',       checkIns:[t,y1],              createdAt:t },
-    { id:'h5', name:'Weekly review',      frequency:'weekly',category:'productivity', checkIns:[],                  createdAt:t },
-  ];
-
-  goals = [
-    { id:'g1', name:'Meditate every day this week', habitId:'h1', period:'weekly',  target:7 },
-    { id:'g2', name:'Exercise 5× this week',         habitId:'h2', period:'weekly',  target:5 },
-    { id:'g3', name:'Read every day this month',     habitId:'h3', period:'monthly', target:28},
-  ];
-  persist();
-}
 
 function mk(title, due, prio, desc, proj, subs, completed=false) {
   return { id:uid(), title, dueDate:due, priority:prio, description:desc, project:proj,

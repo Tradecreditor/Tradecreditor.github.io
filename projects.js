@@ -1,12 +1,6 @@
 // projects.js — Dynamic project management (replaces hardcoded PROJECTS constant)
 
-const DEFAULT_PROJECTS = [
-  { id:'gaming',  name:'Gaming Job Hunt',   color:'#f97316' },
-  { id:'tobuy',   name:'To buy list',        color:'#a78bfa' },
-  { id:'uk',      name:'Uk To Do',           color:'#38bdf8' },
-  { id:'csw',     name:'CSW Packing',        color:'#f472b6' },
-  { id:'renting', name:'Renting Drake Way',  color:'#4ade80' },
-];
+const DEFAULT_PROJECTS = [];
 
 const PROJ_PALETTE = ['#f97316','#a78bfa','#38bdf8','#f472b6','#4ade80','#db4035','#22c55e','#eab308','#06b6d4','#8b5cf6'];
 

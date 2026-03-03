@@ -1,0 +1,1674 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>TaskFlow</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: { sans: ['DM Sans', 'sans-serif'] }
+        }
+      }
+    }
+  </script>
+  <style>
+    *,:before,:after { box-sizing: border-box; }
+    ::-webkit-scrollbar { width: 4px; height: 4px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #333; border-radius: 2px; }
+
+    @keyframes fadeSlideIn {
+      from { opacity: 0; transform: translateY(-6px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    @keyframes modalIn {
+      from { opacity: 0; transform: scale(0.95) translateY(-10px); }
+      to   { opacity: 1; transform: scale(1) translateY(0); }
+    }
+    @keyframes checkPop {
+      0%   { transform: scale(1); }
+      50%  { transform: scale(1.25); }
+      100% { transform: scale(1); }
+    }
+    .fade-in  { animation: fadeSlideIn 0.18s ease both; }
+    .modal-in { animation: modalIn 0.22s cubic-bezier(.16,1,.3,1) both; }
+    .check-pop { animation: checkPop 0.25s ease; }
+
+    .task-row .task-actions { opacity: 0; transition: opacity 0.12s; }
+    .task-row:hover .task-actions { opacity: 1; }
+    .task-row:hover { background: #1a1a1a; }
+
+    .nav-item { display: flex; align-items: center; gap: 10px; padding: 7px 12px; border-radius: 8px;
+      font-size: 14px; color: #a0a0a0; cursor: pointer; width: 100%; transition: background 0.1s, color 0.1s; }
+    .nav-item:hover { background: #252525; color: #e8e8e8; }
+    .nav-item.active { background: #2b1a1a; color: #db4035; }
+
+    .task-cb { width: 17px; height: 17px; border-radius: 50%; border: 1.5px solid #4a4a4a;
+      cursor: pointer; transition: border-color 0.15s, background 0.15s; flex-shrink: 0;
+      display: flex; align-items: center; justify-content: center; }
+    .task-cb:hover { border-color: #db4035; }
+    .task-cb.done { background: #db4035; border-color: #db4035; }
+    .task-cb.p-critical { border-color: #ef4444; }
+    .task-cb.p-high     { border-color: #f97316; }
+    .task-cb.p-medium   { border-color: #3b82f6; }
+    .task-cb.p-low      { border-color: #6b7280; }
+
+    .overdue-row { border-left: 2px solid #f97316; padding-left: 6px; margin-left: -8px; }
+
+    .chip { padding: 5px 12px; border-radius: 20px; font-size: 12px; border: 1px solid #333;
+      color: #888; cursor: pointer; transition: border-color 0.12s, color 0.12s, background 0.12s; }
+    .chip:hover  { border-color: #db4035; color: #db4035; }
+    .chip.active { border-color: #db4035; color: #db4035; background: rgba(219,64,53,.1); }
+
+    .prio-btn { display: flex; align-items: center; gap: 6px; padding: 6px 12px;
+      border-radius: 8px; font-size: 12px; border: 1px solid #2a2a2a;
+      color: #888; cursor: pointer; transition: border-color .12s, background .12s; }
+    .prio-btn:hover { border-color: #444; color: #e8e8e8; }
+    .prio-btn.active-critical { border-color: rgba(239,68,68,.6); background: rgba(239,68,68,.08); color: #e8e8e8; }
+    .prio-btn.active-high     { border-color: rgba(249,115,22,.6); background: rgba(249,115,22,.08); color: #e8e8e8; }
+    .prio-btn.active-medium   { border-color: rgba(59,130,246,.6); background: rgba(59,130,246,.08); color: #e8e8e8; }
+    .prio-btn.active-low      { border-color: rgba(107,114,128,.6); background: rgba(107,114,128,.08); color: #e8e8e8; }
+
+    .form-field { background: #161616; border: 1px solid #2a2a2a; color: #e8e8e8;
+      border-radius: 7px; padding: 8px 11px; width: 100%; font-family: 'DM Sans', sans-serif;
+      font-size: 14px; transition: border-color 0.12s; }
+    .form-field:focus { outline: none; border-color: #444; }
+    .form-field::placeholder { color: #484848; }
+
+    .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.65);
+      backdrop-filter: blur(3px); z-index: 100; display: flex; align-items: center; justify-content: center; }
+
+    .progress-fill { height: 100%; border-radius: 3px; transition: width 0.6s cubic-bezier(.22,1,.36,1); }
+
+    .habit-card:hover { border-color: #333 !important; }
+
+    .streak-badge { background: linear-gradient(135deg,#ff6b35,#ef4444);
+      font-size: 11px; padding: 2px 7px; border-radius: 10px; color: #fff; font-weight: 600; }
+
+    /* Toast */
+    #toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%) translateY(80px);
+      background: #252525; color: #e8e8e8; font-size: 13px; padding: 10px 18px;
+      border-radius: 8px; border: 1px solid #333; z-index: 200;
+      transition: transform 0.3s cubic-bezier(.16,1,.3,1), opacity 0.3s; opacity: 0; pointer-events: none; }
+    #toast.show { transform: translateX(-50%) translateY(0); opacity: 1; }
+  </style>
+</head>
+<body style="background:#121212; color:#e8e8e8; font-family:'DM Sans',sans-serif; height:100vh; overflow:hidden;">
+
+<!-- ═══════════ AUTH MODAL ═══════════ -->
+<div id="auth-modal" style="display:none;position:fixed;inset:0;background:#121212;z-index:300;align-items:center;justify-content:center;">
+  <div style="width:100%;max-width:380px;margin:16px;background:#1e1e1e;border:1px solid #2a2a2a;border-radius:14px;box-shadow:0 24px 64px rgba(0,0,0,.7);">
+    <div style="padding:24px 24px 0;">
+      <h1 style="font-size:22px;font-weight:700;margin:0 0 4px;">TaskFlow</h1>
+      <p style="font-size:13px;color:#555;margin:0 0 20px;">Personal & family task tracker</p>
+      <!-- Tabs -->
+      <div style="display:flex;gap:0;border-bottom:1px solid #252525;margin-bottom:20px;">
+        <button class="auth-tab-btn" data-tab="login" onclick="showAuthTab('login')"
+                style="flex:1;padding:8px;font-size:13px;background:none;border:none;border-bottom:2px solid transparent;cursor:pointer;font-family:inherit;color:#666;transition:color .12s,border-color .12s;">Login</button>
+        <button class="auth-tab-btn" data-tab="register" onclick="showAuthTab('register')"
+                style="flex:1;padding:8px;font-size:13px;background:none;border:none;border-bottom:2px solid transparent;cursor:pointer;font-family:inherit;color:#666;transition:color .12s,border-color .12s;">Register</button>
+        <button class="auth-tab-btn" data-tab="invite" onclick="showAuthTab('invite')"
+                style="flex:1;padding:8px;font-size:13px;background:none;border:none;border-bottom:2px solid transparent;cursor:pointer;font-family:inherit;color:#666;transition:color .12s,border-color .12s;">Invite Code</button>
+      </div>
+    </div>
+    <!-- Login panel -->
+    <div id="auth-login-panel" style="display:flex;flex-direction:column;gap:12px;padding:0 24px 24px;">
+      <div><label style="font-size:11px;font-weight:600;color:#666;text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:6px;">Email</label>
+        <input id="auth-email" type="email" class="form-field" placeholder="you@example.com" onkeydown="if(event.key==='Enter')handleLogin();" /></div>
+      <div><label style="font-size:11px;font-weight:600;color:#666;text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:6px;">Password</label>
+        <input id="auth-password" type="password" class="form-field" placeholder="••••••" onkeydown="if(event.key==='Enter')handleLogin();" /></div>
+      <p id="auth-login-err" style="font-size:12px;color:#ef4444;margin:0;display:none;"></p>
+      <button onclick="handleLogin()" style="padding:10px;background:#db4035;color:#fff;font-size:14px;font-weight:600;border:none;border-radius:8px;cursor:pointer;font-family:inherit;transition:background .12s;"
+              onmouseenter="this.style.background='#c53929'" onmouseleave="this.style.background='#db4035'">Sign In</button>
+    </div>
+    <!-- Register panel -->
+    <div id="auth-register-panel" style="display:none;flex-direction:column;gap:12px;padding:0 24px 24px;">
+      <div><label style="font-size:11px;font-weight:600;color:#666;text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:6px;">Your Name</label>
+        <input id="auth-name" type="text" class="form-field" placeholder="First Last" /></div>
+      <div><label style="font-size:11px;font-weight:600;color:#666;text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:6px;">Email</label>
+        <input id="auth-reg-email" type="email" class="form-field" placeholder="you@example.com" /></div>
+      <div><label style="font-size:11px;font-weight:600;color:#666;text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:6px;">Password</label>
+        <input id="auth-reg-password" type="password" class="form-field" placeholder="Min. 6 characters" /></div>
+      <div><label style="font-size:11px;font-weight:600;color:#666;text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:6px;">Confirm Password</label>
+        <input id="auth-reg-confirm" type="password" class="form-field" placeholder="••••••" onkeydown="if(event.key==='Enter')handleRegister();" /></div>
+      <p id="auth-register-err" style="font-size:12px;color:#ef4444;margin:0;display:none;"></p>
+      <button onclick="handleRegister()" style="padding:10px;background:#db4035;color:#fff;font-size:14px;font-weight:600;border:none;border-radius:8px;cursor:pointer;font-family:inherit;"
+              onmouseenter="this.style.background='#c53929'" onmouseleave="this.style.background='#db4035'">Create Account</button>
+    </div>
+    <!-- Invite code panel -->
+    <div id="auth-invite-panel" style="display:none;flex-direction:column;gap:12px;padding:0 24px 24px;">
+      <p style="font-size:13px;color:#555;margin:0;">Enter the invite code shared by your partner.</p>
+      <div><label style="font-size:11px;font-weight:600;color:#666;text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:6px;">Invite Code</label>
+        <input id="auth-invite-code" type="text" class="form-field" placeholder="e.g. ABC123" style="text-transform:uppercase;letter-spacing:.1em;" /></div>
+      <div><label style="font-size:11px;font-weight:600;color:#666;text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:6px;">Your Name</label>
+        <input id="auth-invite-name" type="text" class="form-field" placeholder="First Last" /></div>
+      <div><label style="font-size:11px;font-weight:600;color:#666;text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:6px;">Email</label>
+        <input id="auth-invite-email" type="email" class="form-field" placeholder="you@example.com" /></div>
+      <div><label style="font-size:11px;font-weight:600;color:#666;text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:6px;">Password</label>
+        <input id="auth-invite-password" type="password" class="form-field" placeholder="Min. 6 characters" onkeydown="if(event.key==='Enter')handleInviteRedeem();" /></div>
+      <p id="auth-invite-err" style="font-size:12px;color:#ef4444;margin:0;display:none;"></p>
+      <button onclick="handleInviteRedeem()" style="padding:10px;background:#db4035;color:#fff;font-size:14px;font-weight:600;border:none;border-radius:8px;cursor:pointer;font-family:inherit;"
+              onmouseenter="this.style.background='#c53929'" onmouseleave="this.style.background='#db4035'">Join</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════ ONBOARDING MODAL ═══════════ -->
+<div id="onboarding-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.8);backdrop-filter:blur(4px);z-index:250;align-items:center;justify-content:center;">
+  <div class="modal-in" style="background:#1e1e1e;border:1px solid #2a2a2a;border-radius:14px;width:100%;max-width:440px;margin:16px;box-shadow:0 24px 64px rgba(0,0,0,.6);">
+    <!-- Step 1: Welcome -->
+    <div id="ob-step-1" style="display:flex;flex-direction:column;align-items:center;padding:32px 28px;text-align:center;">
+      <img src="https://placehold.co/320x160/1a1a1a/db4035?text=TaskFlow" alt="" style="border-radius:10px;margin-bottom:20px;width:100%;max-width:300px;" />
+      <h2 style="font-size:20px;font-weight:700;margin:0 0 8px;">Welcome to TaskFlow</h2>
+      <p style="font-size:13px;color:#666;margin:0 0 24px;line-height:1.6;">Your personal & family task, habit, and goal tracker. Let's get you set up in 3 quick steps.</p>
+    </div>
+    <!-- Step 2: Profile -->
+    <div id="ob-step-2" style="display:none;flex-direction:column;padding:28px;gap:16px;">
+      <h2 style="font-size:18px;font-weight:700;margin:0 0 4px;">Your Profile</h2>
+      <p style="font-size:13px;color:#666;margin:0;">Looking good already! Confirm your display name.</p>
+      <div>
+        <label style="font-size:11px;font-weight:600;color:#666;text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:6px;">Display Name</label>
+        <input id="ob-display-name" type="text" class="form-field" />
+      </div>
+    </div>
+    <!-- Step 3: First task -->
+    <div id="ob-step-3" style="display:none;flex-direction:column;padding:28px;gap:16px;">
+      <h2 style="font-size:18px;font-weight:700;margin:0 0 4px;">Add Your First Task</h2>
+      <p style="font-size:13px;color:#666;margin:0;">What's one thing you'd like to get done today?</p>
+      <div>
+        <label style="font-size:11px;font-weight:600;color:#666;text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:6px;">Task Title</label>
+        <input id="ob-task-title" type="text" class="form-field" maxlength="30" placeholder="e.g. Review weekly goals…"
+               onkeydown="if(event.key==='Enter')finishOnboarding();" />
+      </div>
+    </div>
+    <!-- Footer (shared) -->
+    <div style="padding:16px 28px 24px;display:flex;flex-direction:column;align-items:center;gap:16px;">
+      <!-- Step dots -->
+      <div style="display:flex;align-items:center;gap:6px;">
+        <div id="ob-dot-1" style="height:7px;border-radius:4px;background:#db4035;width:20px;transition:all .2s;"></div>
+        <div id="ob-dot-2" style="height:7px;border-radius:4px;background:#333;width:7px;transition:all .2s;"></div>
+        <div id="ob-dot-3" style="height:7px;border-radius:4px;background:#333;width:7px;transition:all .2s;"></div>
+      </div>
+      <div style="display:flex;gap:10px;width:100%;">
+        <button id="ob-back" onclick="obBack()" style="flex:1;padding:10px;border:1px solid #333;border-radius:8px;background:none;color:#888;font-size:13px;cursor:pointer;font-family:inherit;visibility:hidden;">Back</button>
+        <button onclick="obNext()" style="flex:2;padding:10px;background:#db4035;color:#fff;font-size:13px;font-weight:600;border:none;border-radius:8px;cursor:pointer;font-family:inherit;"
+                onmouseenter="this.style.background='#c53929'" onmouseleave="this.style.background='#db4035'">Next →</button>
+      </div>
+      <button onclick="finishOnboarding()" style="font-size:12px;color:#444;background:none;border:none;cursor:pointer;">Skip setup</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════ SHARED LIST MODAL ═══════════ -->
+<div id="shared-list-modal" class="modal-overlay" style="display:none;">
+  <div class="modal-in" style="background:#1e1e1e;border:1px solid #2a2a2a;border-radius:14px;width:100%;max-width:380px;margin:16px;box-shadow:0 24px 64px rgba(0,0,0,.6);">
+    <div style="padding:18px 20px 14px;border-bottom:1px solid #252525;">
+      <h2 style="font-size:15px;font-weight:600;margin:0;">New Shared List</h2>
+    </div>
+    <div style="padding:18px 20px;display:flex;flex-direction:column;gap:14px;">
+      <div>
+        <label style="font-size:11px;font-weight:600;color:#666;text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:6px;">List Name *</label>
+        <input id="sl-name" type="text" maxlength="40" placeholder="e.g. Groceries, Chores…" class="form-field"
+               onkeydown="if(event.key==='Enter')saveSharedList();" />
+        <p id="sl-name-err" style="font-size:11px;color:#ef4444;margin-top:4px;display:none;">Name is required</p>
+      </div>
+    </div>
+    <div style="padding:14px 20px;border-top:1px solid #252525;display:flex;align-items:center;justify-content:space-between;">
+      <button onclick="document.getElementById('shared-list-modal').style.display='none'" style="font-size:13px;color:#666;background:none;border:none;cursor:pointer;" onmouseenter="this.style.color='#e8e8e8'" onmouseleave="this.style.color='#666'">Cancel</button>
+      <button onclick="saveSharedList()" style="padding:8px 18px;background:#db4035;color:#fff;font-size:13px;font-weight:600;border:none;border-radius:8px;cursor:pointer;font-family:inherit;"
+              onmouseenter="this.style.background='#c53929'" onmouseleave="this.style.background='#db4035'">Create List</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════ APP WRAPPER ═══════════ -->
+<div id="app-wrapper" style="display:flex;width:100%;height:100vh;overflow:hidden;">
+
+<!-- ═══════════ SIDEBAR ═══════════ -->
+<aside style="width:260px; background:#1e1e1e; display:flex; flex-direction:column; height:100vh; flex-shrink:0; border-right:1px solid #252525; overflow-y:auto;">
+
+  <!-- User header -->
+  <div style="display:flex; align-items:center; justify-content:space-between; padding:10px 10px 10px 12px; border-bottom:1px solid #252525;">
+    <div style="display:flex; align-items:center; gap:8px; cursor:pointer; flex:1; padding:4px 6px; border-radius:7px;"
+         onclick="nav('settings')"
+         onmouseenter="this.style.background='#252525'" onmouseleave="this.style.background='transparent'">
+      <div id="sb-user-avatar" style="width:28px;height:28px;border-radius:50%;background:#555;display:flex;align-items:center;justify-content:center;color:#fff;font-size:13px;font-weight:700;flex-shrink:0;"></div>
+      <span id="sb-user-name" style="font-size:14px;font-weight:500;"></span>
+      <svg style="width:12px;height:12px;color:#666;margin-left:auto;" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+    </div>
+    <button onclick="logout()" title="Sign out"
+            style="padding:6px;border-radius:6px;background:none;border:none;color:#666;cursor:pointer;display:flex;margin-left:4px;"
+            onmouseenter="this.style.background='#2a2a2a';this.style.color='#e8e8e8'" onmouseleave="this.style.background='transparent';this.style.color='#666'">
+      <svg style="width:15px;height:15px;" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/></svg>
+    </button>
+  </div>
+
+  <!-- Nav -->
+  <nav style="padding:8px; display:flex; flex-direction:column; gap:2px;">
+    <!-- Add Task -->
+    <button onclick="openTaskModal()" class="nav-item" style="color:#db4035; font-weight:500;">
+      <svg style="width:16px;height:16px;flex-shrink:0;" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 4v16m8-8H4"/></svg>
+      Add Task
+    </button>
+    <button onclick="nav('search')" id="n-search" class="nav-item">
+      <svg style="width:15px;height:15px;flex-shrink:0;" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+      Search
+    </button>
+    <button onclick="nav('inbox')" id="n-inbox" class="nav-item">
+      <svg style="width:15px;height:15px;flex-shrink:0;" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4"/></svg>
+      Inbox
+      <span id="sb-inbox-ct" style="margin-left:auto;font-size:12px;color:#555;"></span>
+    </button>
+    <button onclick="nav('today')" id="n-today" class="nav-item active">
+      <div id="today-cal-icon" style="width:16px;height:16px;border-radius:4px;background:#db4035;display:flex;align-items:center;justify-content:center;color:#fff;font-size:9px;font-weight:700;flex-shrink:0;"></div>
+      Today
+      <span id="sb-today-ct" style="margin-left:auto;font-size:12px;color:#555;"></span>
+    </button>
+    <button onclick="nav('completed')" id="n-completed" class="nav-item">
+      <svg style="width:15px;height:15px;flex-shrink:0;" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+      Completed
+    </button>
+    <button onclick="nav('habits')" id="n-habits" class="nav-item">
+      <svg style="width:15px;height:15px;flex-shrink:0;" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+      Habits
+    </button>
+    <button onclick="nav('goals')" id="n-goals" class="nav-item">
+      <svg style="width:15px;height:15px;flex-shrink:0;" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
+      Goals
+    </button>
+    <button onclick="nav('dashboard')" id="n-dashboard" class="nav-item">
+      <svg style="width:15px;height:15px;flex-shrink:0;" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 5a1 1 0 011-1h4a1 1 0 011 1v5a1 1 0 01-1 1H5a1 1 0 01-1-1V5zm10 0a1 1 0 011-1h4a1 1 0 011 1v2a1 1 0 01-1 1h-4a1 1 0 01-1-1V5zM4 15a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1H5a1 1 0 01-1-1v-4zm10-3a1 1 0 011-1h4a1 1 0 011 1v7a1 1 0 01-1 1h-4a1 1 0 01-1-1v-7z"/></svg>
+      Dashboard
+    </button>
+    <button onclick="nav('family')" id="n-family" class="nav-item">
+      <svg style="width:15px;height:15px;flex-shrink:0;" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+      Family Lists
+      <span id="sb-family-ct" style="margin-left:auto;font-size:12px;color:#555;"></span>
+    </button>
+    <button onclick="nav('settings')" id="n-settings" class="nav-item">
+      <svg style="width:15px;height:15px;flex-shrink:0;" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+      Settings
+    </button>
+  </nav>
+
+  <!-- Projects -->
+  <div style="margin-top:4px; padding:0 8px 8px; flex:1;">
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 8px 6px;">
+      <div style="display:flex;align-items:center;gap:6px;cursor:pointer;" onclick="toggleProjects()">
+        <span style="font-size:11px;font-weight:600;color:#555;text-transform:uppercase;letter-spacing:.07em;">My Projects</span>
+        <svg id="proj-chevron" style="width:12px;height:12px;color:#444;transition:transform .2s;" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+      </div>
+      <button onclick="toggleNewProjectForm()" title="New project"
+              style="padding:3px;border-radius:5px;background:none;border:none;color:#444;cursor:pointer;display:flex;"
+              onmouseenter="this.style.color='#e8e8e8'" onmouseleave="this.style.color='#444'">
+        <svg style="width:13px;height:13px;" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+      </button>
+    </div>
+    <div id="projects-nav" style="display:flex;flex-direction:column;gap:2px;"></div>
+    <div id="new-project-form" style="display:none;"></div>
+  </div>
+
+  <!-- Sync footer -->
+  <div style="border-top:1px solid #252525;padding:10px 12px;display:flex;align-items:center;gap:8px;flex-shrink:0;">
+    <div id="sync-dot" style="width:7px;height:7px;border-radius:50%;background:#22c55e;flex-shrink:0;transition:background .3s;"></div>
+    <span id="sync-label" style="font-size:12px;color:#555;flex:1;">Synced</span>
+    <button onclick="manualSync()" title="Sync now"
+            style="padding:4px 8px;border-radius:6px;background:none;border:1px solid #2a2a2a;color:#555;font-size:11px;cursor:pointer;font-family:inherit;transition:all .12s;white-space:nowrap;"
+            onmouseenter="this.style.borderColor='#444';this.style.color='#e8e8e8'" onmouseleave="this.style.borderColor='#2a2a2a';this.style.color='#555'">Sync Now</button>
+  </div>
+</aside>
+
+<!-- ═══════════ MAIN ═══════════ -->
+<main style="flex:1;overflow-y:auto;height:100vh;" id="main"></main>
+
+</div><!-- end #app-wrapper -->
+
+<!-- ═══════════ TOAST ═══════════ -->
+<div id="toast"></div>
+
+<!-- ═══════════════════════════════════════
+     MODAL: Add / Edit Task
+═══════════════════════════════════════ -->
+<div id="task-modal" class="modal-overlay" style="display:none;">
+  <div class="modal-in" style="background:#1e1e1e;border:1px solid #2a2a2a;border-radius:14px;width:100%;max-width:520px;margin:16px;box-shadow:0 24px 64px rgba(0,0,0,.6);">
+    <div style="padding:18px 20px 14px;border-bottom:1px solid #252525;">
+      <h2 id="modal-task-title" style="font-size:15px;font-weight:600;margin:0;"></h2>
+    </div>
+    <div style="padding:18px 20px;display:flex;flex-direction:column;gap:16px;max-height:70vh;overflow-y:auto;">
+
+      <!-- Title -->
+      <div>
+        <div style="display:flex;justify-content:space-between;margin-bottom:6px;">
+          <label style="font-size:11px;font-weight:600;color:#666;text-transform:uppercase;letter-spacing:.06em;">Title *</label>
+          <span id="title-ct" style="font-size:11px;color:#444;">0/30</span>
+        </div>
+        <input id="t-title" type="text" maxlength="30" placeholder="Task title…" class="form-field"
+               oninput="$('title-ct').textContent=this.value.length+'/30'" />
+        <p id="title-err" style="font-size:11px;color:#ef4444;margin-top:4px;display:none;">Title is required</p>
+      </div>
+
+      <!-- Due date -->
+      <div>
+        <label style="font-size:11px;font-weight:600;color:#666;text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:8px;">Due Date</label>
+        <div style="display:flex;gap:6px;margin-bottom:8px;">
+          <button class="chip" data-chip="today"     onclick="setChip('today')">Today</button>
+          <button class="chip" data-chip="tomorrow"  onclick="setChip('tomorrow')">Tomorrow</button>
+          <button class="chip" data-chip="none"      onclick="setChip('none')">No Date</button>
+        </div>
+        <input id="t-due" type="date" class="form-field" onchange="syncChips()" />
+      </div>
+
+      <!-- Priority -->
+      <div>
+        <label style="font-size:11px;font-weight:600;color:#666;text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:8px;">Priority</label>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;">
+          <button class="prio-btn" data-prio="critical" onclick="setPrio('critical')"><span style="width:8px;height:8px;border-radius:50%;background:#ef4444;display:inline-block;"></span>Critical</button>
+          <button class="prio-btn" data-prio="high"     onclick="setPrio('high')"><span style="width:8px;height:8px;border-radius:50%;background:#f97316;display:inline-block;"></span>High</button>
+          <button class="prio-btn" data-prio="medium"   onclick="setPrio('medium')"><span style="width:8px;height:8px;border-radius:50%;background:#3b82f6;display:inline-block;"></span>Medium</button>
+          <button class="prio-btn" data-prio="low"      onclick="setPrio('low')"><span style="width:8px;height:8px;border-radius:50%;background:#6b7280;display:inline-block;"></span>Low</button>
+        </div>
+      </div>
+
+      <!-- Project -->
+      <div>
+        <label style="font-size:11px;font-weight:600;color:#666;text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:6px;">Project</label>
+        <select id="t-project" class="form-field"></select>
+      </div>
+
+      <!-- Description -->
+      <div>
+        <div style="display:flex;justify-content:space-between;margin-bottom:6px;">
+          <label style="font-size:11px;font-weight:600;color:#666;text-transform:uppercase;letter-spacing:.06em;">Description</label>
+          <span id="desc-ct" style="font-size:11px;color:#444;">0/200</span>
+        </div>
+        <textarea id="t-desc" maxlength="200" rows="3" placeholder="Optional notes…" class="form-field"
+                  style="resize:none;" oninput="$('desc-ct').textContent=this.value.length+'/200'"></textarea>
+      </div>
+
+      <!-- Subtasks -->
+      <div>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+          <label style="font-size:11px;font-weight:600;color:#666;text-transform:uppercase;letter-spacing:.06em;">Subtasks</label>
+          <span id="sub-ct" style="font-size:11px;color:#444;">0/5</span>
+        </div>
+        <div id="sub-list" style="display:flex;flex-direction:column;gap:8px;"></div>
+        <button id="add-sub-btn" onclick="addSubField()"
+                style="display:flex;align-items:center;gap:6px;font-size:12px;color:#666;background:none;border:none;cursor:pointer;margin-top:8px;padding:0;transition:color .12s;"
+                onmouseenter="this.style.color='#e8e8e8'" onmouseleave="this.style.color='#666'">
+          <svg style="width:13px;height:13px;" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+          Add Subtask
+        </button>
+      </div>
+    </div>
+    <div style="padding:14px 20px;border-top:1px solid #252525;display:flex;align-items:center;justify-content:space-between;">
+      <button onclick="closeTaskModal()" style="font-size:13px;color:#666;background:none;border:none;cursor:pointer;transition:color .12s;"
+              onmouseenter="this.style.color='#e8e8e8'" onmouseleave="this.style.color='#666'">Cancel</button>
+      <button onclick="saveTask()" style="padding:8px 18px;background:#db4035;color:#fff;font-size:13px;font-weight:600;border:none;border-radius:8px;cursor:pointer;transition:background .12s;font-family:inherit;"
+              onmouseenter="this.style.background='#c53929'" onmouseleave="this.style.background='#db4035'">Save Task</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════
+     MODAL: Add Habit
+═══════════════════════════════════════ -->
+<div id="habit-modal" class="modal-overlay" style="display:none;">
+  <div class="modal-in" style="background:#1e1e1e;border:1px solid #2a2a2a;border-radius:14px;width:100%;max-width:420px;margin:16px;box-shadow:0 24px 64px rgba(0,0,0,.6);">
+    <div style="padding:18px 20px 14px;border-bottom:1px solid #252525;">
+      <h2 style="font-size:15px;font-weight:600;margin:0;">Add Habit</h2>
+    </div>
+    <div style="padding:18px 20px;display:flex;flex-direction:column;gap:14px;">
+      <div>
+        <label style="font-size:11px;font-weight:600;color:#666;text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:6px;">Habit Name *</label>
+        <input id="h-name" type="text" maxlength="60" placeholder="e.g. Morning meditation…" class="form-field" />
+        <p id="h-name-err" style="font-size:11px;color:#ef4444;margin-top:4px;display:none;">Name is required</p>
+      </div>
+      <div>
+        <label style="font-size:11px;font-weight:600;color:#666;text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:6px;">Frequency</label>
+        <select id="h-freq" class="form-field">
+          <option value="daily">Daily</option>
+          <option value="weekly">Weekly</option>
+        </select>
+      </div>
+      <div>
+        <label style="font-size:11px;font-weight:600;color:#666;text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:6px;">Category</label>
+        <select id="h-cat" class="form-field">
+          <option value="health">Health &amp; Fitness</option>
+          <option value="mindfulness">Mindfulness</option>
+          <option value="learning">Learning</option>
+          <option value="productivity">Productivity</option>
+          <option value="social">Social</option>
+          <option value="other">Other</option>
+        </select>
+      </div>
+    </div>
+      <div id="h-share-row" style="display:none;">
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;color:#a0a0a0;">
+          <input id="h-shared" type="checkbox" style="accent-color:#db4035;width:14px;height:14px;" />
+          Share with family (both users can check in)
+        </label>
+      </div>
+    </div>
+    <div style="padding:14px 20px;border-top:1px solid #252525;display:flex;align-items:center;justify-content:space-between;">
+      <button onclick="$('habit-modal').style.display='none'" style="font-size:13px;color:#666;background:none;border:none;cursor:pointer;" onmouseenter="this.style.color='#e8e8e8'" onmouseleave="this.style.color='#666'">Cancel</button>
+      <button onclick="saveHabit()" style="padding:8px 18px;background:#22c55e;color:#fff;font-size:13px;font-weight:600;border:none;border-radius:8px;cursor:pointer;font-family:inherit;" onmouseenter="this.style.background='#16a34a'" onmouseleave="this.style.background='#22c55e'">Add Habit</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════
+     MODAL: Add Goal
+═══════════════════════════════════════ -->
+<div id="goal-modal" class="modal-overlay" style="display:none;">
+  <div class="modal-in" style="background:#1e1e1e;border:1px solid #2a2a2a;border-radius:14px;width:100%;max-width:420px;margin:16px;box-shadow:0 24px 64px rgba(0,0,0,.6);">
+    <div style="padding:18px 20px 14px;border-bottom:1px solid #252525;">
+      <h2 style="font-size:15px;font-weight:600;margin:0;">Add Goal</h2>
+    </div>
+    <div style="padding:18px 20px;display:flex;flex-direction:column;gap:14px;">
+      <div>
+        <label style="font-size:11px;font-weight:600;color:#666;text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:6px;">Goal Name *</label>
+        <input id="g-name" type="text" maxlength="60" placeholder="e.g. Exercise 5 days this week…" class="form-field" />
+        <p id="g-name-err" style="font-size:11px;color:#ef4444;margin-top:4px;display:none;">Name is required</p>
+      </div>
+      <div>
+        <label style="font-size:11px;font-weight:600;color:#666;text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:6px;">Linked Habit</label>
+        <select id="g-habit" class="form-field"></select>
+      </div>
+      <div>
+        <label style="font-size:11px;font-weight:600;color:#666;text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:6px;">Period</label>
+        <select id="g-period" class="form-field">
+          <option value="weekly">Weekly</option>
+          <option value="monthly">Monthly</option>
+        </select>
+      </div>
+      <div>
+        <label style="font-size:11px;font-weight:600;color:#666;text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:6px;">Target (times)</label>
+        <input id="g-target" type="number" min="1" max="31" value="5" class="form-field" />
+      </div>
+    </div>
+    <div style="padding:14px 20px;border-top:1px solid #252525;display:flex;align-items:center;justify-content:space-between;">
+      <button onclick="$('goal-modal').style.display='none'" style="font-size:13px;color:#666;background:none;border:none;cursor:pointer;" onmouseenter="this.style.color='#e8e8e8'" onmouseleave="this.style.color='#666'">Cancel</button>
+      <button onclick="saveGoal()" style="padding:8px 18px;background:#3b82f6;color:#fff;font-size:13px;font-weight:600;border:none;border-radius:8px;cursor:pointer;font-family:inherit;" onmouseenter="this.style.background='#2563eb'" onmouseleave="this.style.background='#3b82f6'">Add Goal</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════
+     MODAL: Confirm Delete
+═══════════════════════════════════════ -->
+<div id="confirm-modal" class="modal-overlay" style="display:none;">
+  <div class="modal-in" style="background:#1e1e1e;border:1px solid #2a2a2a;border-radius:14px;width:100%;max-width:360px;margin:16px;box-shadow:0 24px 64px rgba(0,0,0,.6);padding:20px;">
+    <h2 style="font-size:15px;font-weight:600;margin:0 0 6px;">Are you sure?</h2>
+    <p id="confirm-msg" style="font-size:13px;color:#888;margin:0 0 18px;"></p>
+    <div style="display:flex;gap:10px;">
+      <button onclick="closeConfirm()" style="flex:1;padding:9px;border:1px solid #333;border-radius:8px;background:none;color:#a0a0a0;font-size:13px;cursor:pointer;font-family:inherit;" onmouseenter="this.style.color='#e8e8e8'" onmouseleave="this.style.color='#a0a0a0'">Cancel</button>
+      <button onclick="execConfirm()" style="flex:1;padding:9px;background:#dc2626;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;" onmouseenter="this.style.background='#b91c1c'" onmouseleave="this.style.background='#dc2626'">Delete</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════
+     JAVASCRIPT
+═══════════════════════════════════════ -->
+<script>
+// ─── Helpers ─────────────────────────────────────────────
+const $ = id => document.getElementById(id);
+const esc = s => s ? String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;') : '';
+const uid = () => Math.random().toString(36).slice(2,9) + Date.now().toString(36);
+const todayStr  = () => new Date().toISOString().slice(0,10);
+const tomorrowStr = () => { const d=new Date(); d.setDate(d.getDate()+1); return d.toISOString().slice(0,10); };
+const isOverdue = d => !!d && d < todayStr();
+
+function formatDue(d) {
+  if (!d) return '';
+  const t = todayStr(), tm = tomorrowStr();
+  if (d === t) return 'Today';
+  if (d === tm) return 'Tomorrow';
+  const dd = new Date(d+'T00:00:00');
+  if (d < t) {
+    const days = Math.round((new Date(t+'T00:00:00') - dd) / 864e5);
+    return `${days}d ago`;
+  }
+  return dd.toLocaleDateString('en-GB',{day:'numeric',month:'short'});
+}
+
+const PCOLORS = { critical:'#ef4444', high:'#f97316', medium:'#3b82f6', low:'#6b7280' };
+// `projects` is managed by projects.js (loaded after this script)
+const CATINFO = {
+  health:      {emoji:'💪', color:'#ef4444'},
+  mindfulness: {emoji:'🧘', color:'#a78bfa'},
+  learning:    {emoji:'📚', color:'#38bdf8'},
+  productivity:{emoji:'⚡', color:'#f97316'},
+  social:      {emoji:'👥', color:'#4ade80'},
+  other:       {emoji:'✨', color:'#888'},
+};
+
+// ─── State ───────────────────────────────────────────────
+let S = { view:'today', project:null };
+let tasks=[], habits=[], goals=[], sharedLists=[];
+let editingTaskId=null, subtaskFields=[], selPrio='medium', selDue=todayStr();
+let confirmCb=null;
+let _allProfiles=[], _cachedInviteCode=null;
+
+// ─── Storage ─────────────────────────────────────────────
+function persist() {
+  localStorage.setItem('tf_tasks',        JSON.stringify(tasks));
+  localStorage.setItem('tf_habits',       JSON.stringify(habits));
+  localStorage.setItem('tf_goals',        JSON.stringify(goals));
+  localStorage.setItem('tf_shared_lists', JSON.stringify(sharedLists));
+  if (currentUser) {
+    updateSyncStatus('pending');
+    sbPushAll(currentUser.id)
+      .then(() => updateSyncStatus('synced'))
+      .catch(() => updateSyncStatus('failed'));
+  }
+}
+async function load() {
+  // Fast render from localStorage cache
+  try { tasks       = JSON.parse(localStorage.getItem('tf_tasks'))        || []; } catch(e){ tasks=[];       }
+  try { habits      = JSON.parse(localStorage.getItem('tf_habits'))       || []; } catch(e){ habits=[];      }
+  try { goals       = JSON.parse(localStorage.getItem('tf_goals'))        || []; } catch(e){ goals=[];       }
+  try { sharedLists = JSON.parse(localStorage.getItem('tf_shared_lists')) || []; } catch(e){ sharedLists=[]; }
+
+  // Supabase fetch (source of truth) — overrides cache
+  if (currentUser) {
+    try {
+      const [remote, profiles, inviteCode] = await Promise.all([
+        sbPullAll(currentUser.id),
+        sbGetAllProfiles(),
+        sbGetInviteCode()
+      ]);
+      tasks = remote.tasks; habits = remote.habits;
+      goals = remote.goals; sharedLists = remote.sharedLists;
+      if (remote.projects.length) { projects = remote.projects; saveProjects(); }
+      _allProfiles      = profiles;
+      _cachedInviteCode = inviteCode;
+      // Update localStorage cache
+      localStorage.setItem('tf_tasks',        JSON.stringify(tasks));
+      localStorage.setItem('tf_habits',       JSON.stringify(habits));
+      localStorage.setItem('tf_goals',        JSON.stringify(goals));
+      localStorage.setItem('tf_shared_lists', JSON.stringify(sharedLists));
+    } catch(e) { console.warn('Supabase pull failed, using localStorage cache', e); }
+  }
+  if (!tasks.length && !habits.length) seed();
+}
+
+function seed() {
+  const t  = todayStr();
+  const y1 = offset(-1), y2 = offset(-2), y3 = offset(-3), y4 = offset(-4), y5 = offset(-5);
+  function offset(n){ const d=new Date(); d.setDate(d.getDate()+n); return d.toISOString().slice(0,10); }
+
+  tasks = [
+    mk('n8n practice', t, 'medium', 'Practice building n8n automation workflows.', 'gaming',
+       [{id:uid(),title:'Set up local n8n instance',completed:false},{id:uid(),title:'Build first workflow',completed:false}]),
+    mk('Monthly Review on Personal Goals', t, 'high', '', '', []),
+    mk('Update portfolio with latest projects', t, 'critical', 'Add 3 new projects and refresh the skills section.', 'gaming', []),
+    mk('Buy groceries for the week', t, 'medium', '', 'tobuy',
+       [{id:uid(),title:'Vegetables & fruit',completed:false},{id:uid(),title:'Milk & dairy',completed:true}]),
+    mk('Complete coding challenge for interview', t, 'high', '', 'gaming', []),
+    mk('Read lease agreement carefully', t, 'medium', '', 'renting', []),
+    mk('Apply for 3 new jobs', y1, 'critical', '', 'gaming', []),
+    mk('Research neighborhoods in London', y1, 'high', 'Focus on zone 2–3 areas near transport links.', 'uk', []),
+    mk('Pack winter clothes', y2, 'low', '', 'csw', []),
+    mk('Send thank you email', t, 'low', '', '', [], true),
+    mk('Follow up with recruiter', y1, 'medium', '', 'gaming', [], true),
+  ];
+
+  habits = [
+    { id:'h1', name:'Morning Meditation', frequency:'daily', category:'mindfulness', checkIns:[t,y1,y2,y3,y4,y5], createdAt:t },
+    { id:'h2', name:'Exercise 30 min',    frequency:'daily', category:'health',       checkIns:[t,y1,y3,y4,y5],   createdAt:t },
+    { id:'h3', name:'Read 20 pages',      frequency:'daily', category:'learning',     checkIns:[y1,y2,y3],         createdAt:t },
+    { id:'h4', name:'Cold shower',        frequency:'daily', category:'health',       checkIns:[t,y1],              createdAt:t },
+    { id:'h5', name:'Weekly review',      frequency:'weekly',category:'productivity', checkIns:[],                  createdAt:t },
+  ];
+
+  goals = [
+    { id:'g1', name:'Meditate every day this week', habitId:'h1', period:'weekly',  target:7 },
+    { id:'g2', name:'Exercise 5× this week',         habitId:'h2', period:'weekly',  target:5 },
+    { id:'g3', name:'Read every day this month',     habitId:'h3', period:'monthly', target:28},
+  ];
+  persist();
+}
+
+function mk(title, due, prio, desc, proj, subs, completed=false) {
+  return { id:uid(), title, dueDate:due, priority:prio, description:desc, project:proj,
+           subtasks:subs, completed, completedAt: completed ? due : null, createdAt:due,
+           owner: currentUser?.id || '' };
+}
+
+// ─── Nav ─────────────────────────────────────────────────
+const NAV_IDS = ['search','inbox','today','completed','habits','goals','dashboard','family','settings'];
+function nav(view, project=null) {
+  S.view = view; S.project = project;
+  NAV_IDS.forEach(id => {
+    const el = $('n-'+id);
+    if (el) { el.classList.remove('active'); }
+  });
+  document.querySelectorAll('.proj-nav-btn').forEach(b => {
+    b.style.background='transparent'; b.style.color='#a0a0a0';
+  });
+  if (!project && $('n-'+view)) $('n-'+view).classList.add('active');
+  if (project) {
+    const el = document.querySelector('.proj-nav-btn[data-proj="'+project+'"]');
+    if (el) { el.style.background='#252525'; el.style.color='#e8e8e8'; }
+  }
+  render();
+}
+
+function toggleProjects() {
+  const list = $('projects-nav'), ch = $('proj-chevron');
+  const hidden = list.style.display === 'none';
+  list.style.display = hidden ? 'flex' : 'none';
+  list.style.flexDirection = 'column';
+  ch.style.transform = hidden ? 'rotate(0deg)' : 'rotate(-90deg)';
+}
+
+// ─── Sidebar render ───────────────────────────────────────
+function renderSidebar() {
+  // today icon
+  $('today-cal-icon').textContent = new Date().getDate();
+
+  // counts
+  const t = todayStr();
+  const todayCt   = tasks.filter(x => !x.completed && (x.dueDate===t || isOverdue(x.dueDate))).length;
+  const inboxCt   = tasks.filter(x => !x.completed && !x.project).length;
+  const familyCt  = sharedLists.reduce((n, l) => n + l.items.filter(i => !i.completed).length, 0);
+  $('sb-today-ct').textContent  = todayCt  || '';
+  $('sb-inbox-ct').textContent  = inboxCt  || '';
+  $('sb-family-ct').textContent = familyCt || '';
+
+  // projects
+  const navEl = $('projects-nav');
+  navEl.innerHTML = '';
+  projects.forEach(p => {
+    const ct = tasks.filter(x => !x.completed && x.project===p.id).length;
+    const btn = document.createElement('button');
+    btn.className = 'nav-item proj-nav-btn';
+    btn.dataset.proj = p.id;
+    btn.onclick = () => nav_proj(p.id);
+    btn.innerHTML = `
+      <span style="width:8px;height:8px;border-radius:50%;background:${p.color};flex-shrink:0;display:inline-block;"></span>
+      <span style="flex:1;text-align:left;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(p.name)}</span>
+      ${ct ? `<span style="font-size:12px;color:#555;">${ct}</span>` : ''}
+      <button onclick="event.stopPropagation();confirmDeleteProject('${p.id}')"
+              style="padding:2px;border-radius:4px;background:none;border:none;color:#444;cursor:pointer;opacity:0;transition:opacity .1s;display:flex;"
+              onmouseenter="this.style.opacity='1';this.style.color='#ef4444'" onmouseleave="this.style.opacity='0'">
+        <svg style="width:11px;height:11px;" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+      </button>`;
+    btn.addEventListener('mouseenter', () => { btn.querySelectorAll('button').forEach(b => b.style.opacity='1'); });
+    btn.addEventListener('mouseleave', () => { btn.querySelectorAll('button').forEach(b => b.style.opacity='0'); });
+    navEl.appendChild(btn);
+  });
+
+  // highlight active project
+  if (S.project) {
+    const el = document.querySelector('.proj-nav-btn[data-proj="'+S.project+'"]');
+    if (el) { el.style.background='#252525'; el.style.color='#e8e8e8'; }
+  }
+}
+function nav_proj(id) { nav('project', id); }
+
+// ─── Main render ──────────────────────────────────────────
+function render() {
+  if (!currentUser) return;
+  renderSidebar();
+  const m = $('main');
+  if      (S.view==='today')     renderToday(m);
+  else if (S.view==='inbox')     renderInbox(m);
+  else if (S.view==='completed') renderCompleted(m);
+  else if (S.view==='habits')    renderHabits(m);
+  else if (S.view==='goals')     renderGoals(m);
+  else if (S.view==='project')   renderProject(m, S.project);
+  else if (S.view==='search')    renderSearch(m);
+  else if (S.view==='dashboard') renderDashboard(m);
+  else if (S.view==='family')    renderFamilyLists(m);
+  else if (S.view==='settings')  renderSettings(m);
+}
+
+// ─── Task row HTML ────────────────────────────────────────
+function taskRowHTML(task, forceOverdue=false) {
+  const ov = forceOverdue || isOverdue(task.dueDate);
+  const pc = PCOLORS[task.priority] || '#6b7280';
+  const proj = projects.find(p => p.id===task.project);
+  const sdone = task.subtasks?.filter(s=>s.completed).length||0;
+  const stotal= task.subtasks?.length||0;
+  const dueLabel = task.dueDate ? formatDue(task.dueDate) : '';
+
+  return `
+  <div class="task-row fade-in ${ov?'overdue-row':''}" data-tid="${task.id}"
+       style="display:flex;align-items:flex-start;gap:10px;padding:8px 8px;border-radius:8px;cursor:default;transition:background .1s;margin-bottom:2px;">
+    <div class="task-cb p-${task.priority}" onclick="completeTask('${task.id}')" title="Complete"></div>
+    <div style="flex:1;min-width:0;">
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+        <span style="font-size:14px;color:#e0e0e0;line-height:1.4;">${esc(task.title)}</span>
+        ${ov ? `<span style="font-size:10px;padding:2px 7px;border-radius:10px;background:rgba(249,115,22,.15);color:#fb923c;font-weight:500;">Overdue</span>` : ''}
+      </div>
+      ${task.description ? `
+        <div style="margin-top:2px;">
+          <button onclick="toggleDesc(this)" style="font-size:12px;color:#555;background:none;border:none;cursor:pointer;padding:0;text-align:left;transition:color .12s;" onmouseenter="this.style.color='#888'" onmouseleave="this.style.color='#555'">
+            <span class="dshort">${esc(task.description.slice(0,60))}${task.description.length>60?'…':''}</span>
+            <span class="dfull" style="display:none;">${esc(task.description)}</span>
+          </button>
+        </div>` : ''}
+      <div style="display:flex;align-items:center;gap:10px;margin-top:4px;flex-wrap:wrap;">
+        ${task.dueDate ? `<span style="font-size:11px;color:${ov?'#fb923c':'#555'};display:flex;align-items:center;gap:3px;">
+          <svg style="width:10px;height:10px;" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+          ${dueLabel}</span>` : ''}
+        ${proj ? `<span style="font-size:11px;color:${proj.color};">● ${esc(proj.name)}</span>` : ''}
+      </div>
+      ${stotal>0 ? `
+      <div style="margin-top:6px;">
+        <button onclick="toggleSubs('${task.id}')"
+                style="display:flex;align-items:center;gap:5px;font-size:11px;color:#555;background:none;border:none;cursor:pointer;padding:0;transition:color .12s;"
+                onmouseenter="this.style.color='#888'" onmouseleave="this.style.color='#555'">
+          <svg id="sc-${task.id}" style="width:11px;height:11px;transition:transform .2s;" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+          <span>${sdone}/${stotal}</span>
+        </button>
+        <div id="subs-${task.id}" style="display:none;margin-top:6px;margin-left:4px;display:none;flex-direction:column;gap:5px;">
+          ${task.subtasks.map(st=>`
+          <div style="display:flex;align-items:center;gap:7px;" class="sub-row-${task.id}">
+            <div class="task-cb ${st.completed?'done':''}" style="width:13px;height:13px;min-width:13px;"
+                 onclick="toggleSubtask('${task.id}','${st.id}')">
+              ${st.completed?`<svg style="width:7px;height:7px;" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"/></svg>`:''}
+            </div>
+            <span style="font-size:12px;color:${st.completed?'#555':'#aaa'};${st.completed?'text-decoration:line-through':''}">${esc(st.title)}</span>
+            <button onclick="deleteSubtask('${task.id}','${st.id}')"
+                    style="margin-left:auto;padding:2px;border-radius:4px;background:none;border:none;color:#444;cursor:pointer;opacity:0;transition:opacity .1s;"
+                    onmouseenter="this.style.opacity='1';this.style.color='#ef4444'" onmouseleave="this.style.opacity='0'">
+              <svg style="width:11px;height:11px;" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+            </button>
+          </div>`).join('')}
+        </div>
+      </div>` : ''}
+    </div>
+    <div class="task-actions" style="display:flex;align-items:center;gap:2px;flex-shrink:0;">
+      <button onclick="editTask('${task.id}')" title="Edit"
+              style="padding:5px;border-radius:6px;background:none;border:none;color:#555;cursor:pointer;transition:color .1s;"
+              onmouseenter="this.style.color='#e8e8e8'" onmouseleave="this.style.color='#555'">
+        <svg style="width:13px;height:13px;" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
+      </button>
+      <button onclick="confirmDeleteTask('${task.id}')" title="Delete"
+              style="padding:5px;border-radius:6px;background:none;border:none;color:#555;cursor:pointer;transition:color .1s;"
+              onmouseenter="this.style.color='#ef4444'" onmouseleave="this.style.color='#555'">
+        <svg style="width:13px;height:13px;" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+      </button>
+    </div>
+  </div>`;
+}
+
+function addTaskBtn(projectId='') {
+  return `<button onclick="openTaskModal('${projectId}')"
+    style="display:flex;align-items:center;gap:8px;padding:8px 8px;font-size:13px;color:#484848;background:none;border:none;cursor:pointer;width:100%;border-radius:8px;transition:color .15s;margin-top:4px;font-family:inherit;"
+    onmouseenter="this.querySelector('.plus-ico').style.opacity='1';this.style.color='#e8e8e8'"
+    onmouseleave="this.querySelector('.plus-ico').style.opacity='0';this.style.color='#484848'">
+    <svg class="plus-ico" style="width:15px;height:15px;color:#db4035;opacity:0;transition:opacity .15s;flex-shrink:0;" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+    Add task
+  </button>`;
+}
+
+function sectionHeader(label, count='', extra='') {
+  return `<div style="display:flex;align-items:center;justify-content:space-between;padding:6px 0 8px;border-bottom:1px solid #232323;margin-bottom:4px;">
+    <div style="display:flex;align-items:center;gap:6px;">
+      <span style="font-size:13px;font-weight:500;color:#666;">${label}</span>
+      ${count!=='' ? `<span style="font-size:11px;color:#444;">${count}</span>` : ''}
+    </div>
+    ${extra}
+  </div>`;
+}
+
+// ─── Today view ───────────────────────────────────────────
+function renderToday(m) {
+  const t = todayStr();
+  const dayNames = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+  const monNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const now = new Date();
+  const dateLabel = `${monNames[now.getMonth()]} ${now.getDate()} · Today · ${dayNames[now.getDay()]}`;
+
+  const todayTasks   = tasks.filter(x => !x.completed && x.dueDate===t);
+  const overdueTasks = tasks.filter(x => !x.completed && isOverdue(x.dueDate));
+  const noDueTasks   = tasks.filter(x => !x.completed && !x.dueDate);
+  const total = todayTasks.length + overdueTasks.length;
+
+  let html = `<div style="max-width:680px;margin:0 auto;padding:36px 40px;">
+    <h1 style="font-size:28px;font-weight:700;margin:0 0 4px;">Today</h1>
+    <p style="font-size:13px;color:#555;margin:0 0 28px;">${total} task${total!==1?'s':''}</p>`;
+
+  if (overdueTasks.length) {
+    html += `<div style="margin-bottom:18px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:5px 0 8px;border-bottom:1px solid #232323;margin-bottom:4px;cursor:pointer;" onclick="toggleOverdue(this)">
+        <div style="display:flex;align-items:center;gap:6px;">
+          <svg id="ov-ch" style="width:12px;height:12px;color:#666;transition:transform .2s;" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+          <span style="font-size:13px;font-weight:500;color:#666;">Overdue</span>
+          <span style="font-size:11px;color:#444;">${overdueTasks.length}</span>
+        </div>
+        <button onclick="event.stopPropagation();rescheduleAll()"
+                style="font-size:12px;color:#db4035;background:none;border:none;cursor:pointer;opacity:0;transition:opacity .15s;"
+                id="reschedule-btn" onmouseenter="this.style.color='#ff5349'" onmouseleave="this.style.color='#db4035'">Reschedule</button>
+      </div>
+      <div id="overdue-list">
+        ${overdueTasks.map(t=>taskRowHTML(t,true)).join('')}
+      </div>
+    </div>`;
+  }
+
+  html += `<div style="margin-bottom:4px;">
+    ${sectionHeader(dateLabel)}
+    <div id="today-list">${todayTasks.map(t=>taskRowHTML(t)).join('')}</div>
+    ${addTaskBtn()}
+  </div>`;
+
+  if (noDueTasks.length) {
+    html += `<div style="margin-top:24px;">
+      ${sectionHeader('No date', noDueTasks.length)}
+      ${noDueTasks.map(t=>taskRowHTML(t)).join('')}
+    </div>`;
+  }
+
+  html += `</div>`;
+  m.innerHTML = html;
+
+  // show reschedule btn on overdue hover
+  const ovSec = document.querySelector('#overdue-list')?.parentElement;
+  if (ovSec) {
+    ovSec.addEventListener('mouseenter', () => {
+      const b = $('reschedule-btn'); if(b) b.style.opacity='1';
+    });
+    ovSec.addEventListener('mouseleave', () => {
+      const b = $('reschedule-btn'); if(b) b.style.opacity='0';
+    });
+  }
+}
+
+function toggleOverdue(header) {
+  const list = $('overdue-list');
+  const ch   = $('ov-ch');
+  if (!list) return;
+  const hidden = list.style.display === 'none';
+  list.style.display = hidden ? 'block' : 'none';
+  if (ch) ch.style.transform = hidden ? 'rotate(0deg)' : 'rotate(-90deg)';
+}
+
+function rescheduleAll() {
+  const t = todayStr();
+  tasks.forEach(x => { if (!x.completed && isOverdue(x.dueDate)) x.dueDate = t; });
+  persist(); render(); toast('Overdue tasks rescheduled to today');
+}
+
+// ─── Inbox view ───────────────────────────────────────────
+function renderInbox(m) {
+  const list = tasks.filter(x => !x.completed && !x.project);
+  m.innerHTML = `<div style="max-width:680px;margin:0 auto;padding:36px 40px;">
+    <h1 style="font-size:28px;font-weight:700;margin:0 0 4px;">Inbox</h1>
+    <p style="font-size:13px;color:#555;margin:0 0 28px;">${list.length} task${list.length!==1?'s':''}</p>
+    ${list.length ? list.map(t=>taskRowHTML(t)).join('') : empty('No tasks in inbox')}
+    ${addTaskBtn()}
+  </div>`;
+}
+
+// ─── Project view ─────────────────────────────────────────
+function renderProject(m, pid) {
+  const proj = projects.find(p=>p.id===pid);
+  if (!proj) return;
+  const list = tasks.filter(x => !x.completed && x.project===pid);
+  const ov   = list.filter(x => isOverdue(x.dueDate));
+  const curr = list.filter(x => !isOverdue(x.dueDate));
+
+  m.innerHTML = `<div style="max-width:680px;margin:0 auto;padding:36px 40px;">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px;">
+      <div style="width:10px;height:10px;border-radius:50%;background:${proj.color};flex-shrink:0;"></div>
+      <h1 style="font-size:28px;font-weight:700;margin:0;">${esc(proj.name)}</h1>
+    </div>
+    <p style="font-size:13px;color:#555;margin:0 0 28px;">${list.length} task${list.length!==1?'s':''}</p>
+    ${ov.length ? `<div style="margin-bottom:18px;">
+      ${sectionHeader('Overdue', ov.length)}
+      ${ov.map(t=>taskRowHTML(t,true)).join('')}
+    </div>` : ''}
+    ${curr.map(t=>taskRowHTML(t)).join('')}
+    ${!list.length ? empty('No tasks in this project') : ''}
+    ${addTaskBtn(pid)}
+  </div>`;
+}
+
+// ─── Completed view ───────────────────────────────────────
+function renderCompleted(m) {
+  const list = tasks.filter(x=>x.completed).sort((a,b)=>(b.completedAt||'').localeCompare(a.completedAt||''));
+  m.innerHTML = `<div style="max-width:680px;margin:0 auto;padding:36px 40px;">
+    <h1 style="font-size:28px;font-weight:700;margin:0 0 4px;">Completed</h1>
+    <p style="font-size:13px;color:#555;margin:0 0 28px;">${list.length} task${list.length!==1?'s':''}</p>
+    ${list.length ? list.map(t=>`
+    <div class="task-row fade-in" style="display:flex;align-items:center;gap:10px;padding:8px 8px;border-radius:8px;margin-bottom:2px;">
+      <div class="task-cb done check-pop" onclick="uncompleteTask('${t.id}')" title="Mark incomplete">
+        <svg style="width:8px;height:8px;" fill="none" stroke="white" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"/></svg>
+      </div>
+      <div style="flex:1;min-width:0;">
+        <span style="font-size:14px;color:#555;text-decoration:line-through;">${esc(t.title)}</span>
+        ${t.completedAt ? `<span style="font-size:11px;color:#404040;margin-left:8px;">Completed ${formatDue(t.completedAt)}</span>` : ''}
+      </div>
+      <div class="task-actions">
+        <button onclick="confirmDeleteTask('${t.id}')"
+                style="padding:5px;border-radius:6px;background:none;border:none;color:#555;cursor:pointer;"
+                onmouseenter="this.style.color='#ef4444'" onmouseleave="this.style.color='#555'">
+          <svg style="width:13px;height:13px;" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+        </button>
+      </div>
+    </div>`).join('') : empty('No completed tasks yet')}
+  </div>`;
+}
+
+// ─── Habits view ──────────────────────────────────────────
+function renderHabits(m) {
+  const t = todayStr();
+  const doneCt = habits.filter(h=>h.checkIns?.includes(t)).length;
+
+  let cards = habits.map(h => {
+    const info  = CATINFO[h.category] || CATINFO.other;
+    const streak = computeStreak(h);
+    const doneToday = h.checkIns?.includes(t);
+    const days7 = [];
+    for (let i=6; i>=0; i--) {
+      const d = new Date(); d.setDate(d.getDate()-i);
+      const ds = d.toISOString().slice(0,10);
+      days7.push({ ds, done: h.checkIns?.includes(ds), isT: ds===t });
+    }
+    const DAY_LABELS = ['S','M','T','W','T','F','S'];
+
+    return `<div class="habit-card fade-in" style="background:#1a1a1a;border:1px solid #252525;border-radius:12px;padding:16px;transition:border-color .15s;">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:12px;">
+        <div style="display:flex;align-items:center;gap:10px;">
+          <div style="width:36px;height:36px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:18px;background:${info.color}1a;border:1px solid ${info.color}33;">${info.emoji}</div>
+          <div>
+            <div style="font-size:14px;font-weight:500;color:#e0e0e0;">${esc(h.name)}</div>
+            <div style="font-size:11px;color:#555;text-transform:capitalize;margin-top:1px;">${h.frequency} · ${h.category}</div>
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;">
+          ${streak>0 ? `<span class="streak-badge">🔥 ${streak}</span>` : ''}
+          <button onclick="checkIn('${h.id}')"
+            style="padding:6px 12px;border-radius:8px;font-size:12px;font-weight:500;border:1px solid;cursor:pointer;transition:all .15s;font-family:inherit;
+            ${doneToday ? 'background:#22c55e;border-color:#22c55e;color:#fff;' : 'background:transparent;border-color:#333;color:#666;'}"
+            onmouseenter="if(!this.classList.contains('checked-in')){this.style.borderColor='#22c55e';this.style.color='#22c55e';}"
+            onmouseleave="if(!this.classList.contains('checked-in')){this.style.borderColor='#333';this.style.color='#666';}"
+            ${doneToday ? 'class="checked-in"' : ''}>
+            ${doneToday ? '✓ Done' : 'Check in'}
+          </button>
+          <button onclick="confirmDeleteHabit('${h.id}')"
+                  style="padding:4px;border-radius:6px;background:none;border:none;color:#444;cursor:pointer;transition:color .12s;"
+                  onmouseenter="this.style.color='#ef4444'" onmouseleave="this.style.color='#444'">
+            <svg style="width:13px;height:13px;" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+          </button>
+        </div>
+      </div>
+      <div style="display:flex;gap:4px;">
+        ${days7.map((d,i) => {
+          const lbl = DAY_LABELS[new Date(d.ds+'T00:00:00').getDay()];
+          return `<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;">
+            <span style="font-size:9px;color:#444;">${lbl}</span>
+            <div style="width:100%;height:18px;border-radius:3px;
+              background:${d.done ? info.color : '#252525'};
+              opacity:${d.done?0.85:1};
+              ${d.isT ? 'box-shadow:0 0 0 1.5px #444;' : ''}
+              transition:background .2s;">
+            </div>
+          </div>`;
+        }).join('')}
+      </div>
+    </div>`;
+  }).join('');
+
+  m.innerHTML = `<div style="max-width:680px;margin:0 auto;padding:36px 40px;">
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:28px;">
+      <div>
+        <h1 style="font-size:28px;font-weight:700;margin:0 0 4px;">Habits</h1>
+        <p style="font-size:13px;color:#555;margin:0;">${habits.length} habit${habits.length!==1?'s':''} · ${doneCt} done today</p>
+      </div>
+      <button onclick="openHabitModal()"
+        style="display:flex;align-items:center;gap:6px;padding:9px 16px;background:#22c55e;color:#fff;font-size:13px;font-weight:500;border:none;border-radius:9px;cursor:pointer;transition:background .12s;font-family:inherit;"
+        onmouseenter="this.style.background='#16a34a'" onmouseleave="this.style.background='#22c55e'">
+        <svg style="width:14px;height:14px;" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+        Add Habit
+      </button>
+    </div>
+    ${habits.length ? `<div style="display:flex;flex-direction:column;gap:10px;">${cards}</div>` : emptyAction('No habits yet. Start building a streak!','openHabitModal()','Add First Habit','#22c55e','#16a34a')}
+  </div>`;
+}
+
+// ─── Goals view ───────────────────────────────────────────
+function renderGoals(m) {
+  const weekly  = goals.filter(g=>g.period==='weekly');
+  const monthly = goals.filter(g=>g.period==='monthly');
+
+  function goalCard(g) {
+    const h = habits.find(x=>x.id===g.habitId);
+    const progress = h ? checkinsInPeriod(h, g.period) : 0;
+    const pct = Math.min(100, Math.round(progress / g.target * 100));
+    const done = pct >= 100;
+    const barColor = done ? '#22c55e' : '#3b82f6';
+    const periodLabel = g.period==='weekly' ? 'this week' : 'this month';
+
+    return `<div class="habit-card fade-in" style="background:#1a1a1a;border:1px solid #252525;border-radius:12px;padding:16px;transition:border-color .15s;">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:12px;">
+        <div>
+          <div style="font-size:14px;font-weight:500;color:#e0e0e0;">${esc(g.name)}</div>
+          ${h ? `<div style="font-size:11px;color:#555;margin-top:2px;">📌 ${esc(h.name)}</div>` : ''}
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;">
+          ${done ? `<span style="font-size:11px;padding:3px 8px;border-radius:10px;background:rgba(34,197,94,.15);color:#22c55e;font-weight:500;">Achieved 🎉</span>` : ''}
+          <button onclick="confirmDeleteGoal('${g.id}')"
+                  style="padding:4px;border-radius:6px;background:none;border:none;color:#444;cursor:pointer;transition:color .12s;"
+                  onmouseenter="this.style.color='#ef4444'" onmouseleave="this.style.color='#444'">
+            <svg style="width:13px;height:13px;" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+          </button>
+        </div>
+      </div>
+      <div style="display:flex;justify-content:space-between;margin-bottom:6px;">
+        <span style="font-size:12px;color:#555;">${progress} / ${g.target} ${periodLabel}</span>
+        <span style="font-size:12px;font-weight:500;color:${done?'#22c55e':'#e0e0e0'}">${pct}%</span>
+      </div>
+      <div style="height:5px;background:#252525;border-radius:3px;overflow:hidden;">
+        <div class="progress-fill" style="width:${pct}%;background:${barColor};"></div>
+      </div>
+    </div>`;
+  }
+
+  m.innerHTML = `<div style="max-width:680px;margin:0 auto;padding:36px 40px;">
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:28px;">
+      <div>
+        <h1 style="font-size:28px;font-weight:700;margin:0 0 4px;">Goals</h1>
+        <p style="font-size:13px;color:#555;margin:0;">${goals.length} goal${goals.length!==1?'s':''}</p>
+      </div>
+      <button onclick="openGoalModal()"
+        style="display:flex;align-items:center;gap:6px;padding:9px 16px;background:#3b82f6;color:#fff;font-size:13px;font-weight:500;border:none;border-radius:9px;cursor:pointer;transition:background .12s;font-family:inherit;"
+        onmouseenter="this.style.background='#2563eb'" onmouseleave="this.style.background='#3b82f6'">
+        <svg style="width:14px;height:14px;" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+        Add Goal
+      </button>
+    </div>
+    ${!goals.length ? emptyAction('No goals set. Define what you want to achieve!','openGoalModal()','Add First Goal','#3b82f6','#2563eb') : `
+      ${weekly.length ? `<div style="margin-bottom:24px;">
+        <div style="font-size:11px;font-weight:600;color:#444;text-transform:uppercase;letter-spacing:.07em;margin-bottom:10px;">Weekly</div>
+        <div style="display:flex;flex-direction:column;gap:10px;">${weekly.map(goalCard).join('')}</div>
+      </div>` : ''}
+      ${monthly.length ? `<div>
+        <div style="font-size:11px;font-weight:600;color:#444;text-transform:uppercase;letter-spacing:.07em;margin-bottom:10px;">Monthly</div>
+        <div style="display:flex;flex-direction:column;gap:10px;">${monthly.map(goalCard).join('')}</div>
+      </div>` : ''}
+    `}
+  </div>`;
+}
+
+// ─── Search view ──────────────────────────────────────────
+function renderSearch(m) {
+  m.innerHTML = `<div style="max-width:680px;margin:0 auto;padding:36px 40px;">
+    <h1 style="font-size:28px;font-weight:700;margin:0 0 18px;">Search</h1>
+    <input id="search-q" type="text" placeholder="Search tasks by title or description…" class="form-field"
+           style="font-size:15px;padding:12px 14px;" oninput="doSearch(this.value)" autofocus />
+    <div id="search-results" style="margin-top:16px;"></div>
+  </div>`;
+}
+
+function doSearch(q) {
+  const res = $('search-results');
+  if (!q.trim()) { res.innerHTML=''; return; }
+  const lq = q.toLowerCase();
+  const matched = tasks.filter(t => t.title.toLowerCase().includes(lq) || (t.description||'').toLowerCase().includes(lq));
+  res.innerHTML = matched.length ? matched.map(t=>taskRowHTML(t,isOverdue(t.dueDate))).join('') : `<p style="font-size:13px;color:#555;margin-top:12px;">No tasks match "${esc(q)}"</p>`;
+}
+
+// ─── Utility HTML ─────────────────────────────────────────
+function empty(msg) {
+  return `<div style="text-align:center;padding:60px 0;color:#444;font-size:13px;">${msg}</div>`;
+}
+function emptyAction(msg, fn, label, bg, bgH) {
+  return `<div style="text-align:center;padding:60px 0;">
+    <p style="color:#444;font-size:13px;margin:0 0 14px;">${msg}</p>
+    <button onclick="${fn}" style="padding:9px 18px;background:${bg};color:#fff;font-size:13px;font-weight:500;border:none;border-radius:9px;cursor:pointer;font-family:inherit;"
+            onmouseenter="this.style.background='${bgH}'" onmouseleave="this.style.background='${bg}'">${label}</button>
+  </div>`;
+}
+
+// ─── Task CRUD ────────────────────────────────────────────
+function completeTask(id) {
+  const t = tasks.find(x=>x.id===id);
+  if (!t) return;
+  t.completed = true; t.completedAt = todayStr();
+  persist(); render(); toast(`"${t.title}" completed`);
+}
+function uncompleteTask(id) {
+  const t = tasks.find(x=>x.id===id);
+  if (!t) return;
+  t.completed = false; t.completedAt = null;
+  persist(); render();
+}
+function toggleSubtask(tid, sid) {
+  const t = tasks.find(x=>x.id===tid);
+  if (!t) return;
+  const s = t.subtasks?.find(x=>x.id===sid);
+  if (!s) return;
+  s.completed = !s.completed;
+  persist(); render();
+}
+function deleteSubtask(tid, sid) {
+  const t = tasks.find(x=>x.id===tid);
+  if (!t) return;
+  t.subtasks = t.subtasks.filter(x=>x.id!==sid);
+  persist(); render();
+}
+function confirmDeleteTask(id) {
+  const t = tasks.find(x=>x.id===id);
+  if (!t) return;
+  $('confirm-msg').textContent = `Delete "${t.title}"? This cannot be undone.`;
+  confirmCb = () => { tasks = tasks.filter(x=>x.id!==id); persist(); render(); sbDeleteTask(id); toast('Task deleted'); };
+  $('confirm-modal').style.display = 'flex';
+}
+function confirmDeleteHabit(id) {
+  const h = habits.find(x => x.id === id);
+  if (!h) return;
+  if (h.createdBy && currentUser && h.createdBy !== currentUser.id) {
+    toast('Only the creator can delete this habit'); return;
+  }
+  $('confirm-msg').textContent = 'Delete this habit? Linked goals will also be removed.';
+  confirmCb = () => {
+    habits = habits.filter(x=>x.id!==id);
+    goals  = goals.filter(x=>x.habitId!==id);
+    persist(); render(); sbDeleteHabit(id); toast('Habit deleted');
+  };
+  $('confirm-modal').style.display = 'flex';
+}
+function confirmDeleteGoal(id) {
+  $('confirm-msg').textContent = 'Delete this goal? This cannot be undone.';
+  confirmCb = () => { goals = goals.filter(x=>x.id!==id); persist(); render(); sbDeleteGoal(id); toast('Goal deleted'); };
+  $('confirm-modal').style.display = 'flex';
+}
+function closeConfirm() { $('confirm-modal').style.display='none'; confirmCb=null; }
+function execConfirm() { if (confirmCb) confirmCb(); closeConfirm(); }
+
+function editTask(id) {
+  const t = tasks.find(x=>x.id===id);
+  if (t) openTaskModal(t.project, t);
+}
+
+function toggleSubs(id) {
+  const el = $('subs-'+id);
+  const ch = $('sc-'+id);
+  if (!el) return;
+  const showing = el.style.display === 'flex';
+  el.style.display = showing ? 'none' : 'flex';
+  el.style.flexDirection = 'column';
+  el.style.gap = '5px';
+  if (ch) ch.style.transform = showing ? 'rotate(0deg)' : 'rotate(90deg)';
+}
+
+function toggleDesc(btn) {
+  btn.querySelector('.dshort').style.display = btn.querySelector('.dshort').style.display==='none' ? '' : 'none';
+  btn.querySelector('.dfull').style.display  = btn.querySelector('.dfull').style.display==='none'  ? '' : 'none';
+}
+
+// ─── Habit logic ─────────────────────────────────────────
+function checkIn(id) {
+  const h = habits.find(x=>x.id===id);
+  if (!h) return;
+  const t = todayStr();
+  const uid2 = currentUser?.id || '';
+  if (!h.checkIns) h.checkIns = [];
+  if (!h.checkInsByUser) h.checkInsByUser = {};
+  if (!h.checkInsByUser[uid2]) h.checkInsByUser[uid2] = [];
+  if (h.checkIns.includes(t)) {
+    h.checkIns = h.checkIns.filter(d => d !== t);
+    h.checkInsByUser[uid2] = h.checkInsByUser[uid2].filter(d => d !== t);
+  } else {
+    h.checkIns.push(t);
+    h.checkInsByUser[uid2].push(t);
+    toast(`${h.name} checked in!`);
+  }
+  persist(); render();
+}
+function computeStreak(h) {
+  let streak = 0, cur = new Date();
+  const ci = h.checkIns || [];
+  for (let i=0; i<365; i++) {
+    const ds = cur.toISOString().slice(0,10);
+    if (ci.includes(ds)) { streak++; cur.setDate(cur.getDate()-1); }
+    else break;
+  }
+  return streak;
+}
+function checkinsInPeriod(h, period) {
+  const now = new Date();
+  let start;
+  if (period === 'weekly') {
+    const day = now.getDay();
+    start = new Date(now); start.setDate(now.getDate() - day); start.setHours(0,0,0,0);
+  } else {
+    start = new Date(now.getFullYear(), now.getMonth(), 1);
+  }
+  const ss = start.toISOString().slice(0,10);
+  return (h.checkIns||[]).filter(d => d >= ss).length;
+}
+
+// ─── Task modal ───────────────────────────────────────────
+function openTaskModal(defaultProject='', editT=null) {
+  editingTaskId = editT?.id || null;
+  subtaskFields = editT?.subtasks ? editT.subtasks.map(s=>({...s})) : [];
+  selPrio = editT?.priority || 'medium';
+  selDue  = editT?.dueDate  !== undefined ? editT.dueDate : todayStr();
+
+  $('modal-task-title').textContent = editT ? 'Edit Task' : 'Add Task';
+  $('t-title').value = editT?.title || '';
+  $('title-ct').textContent = (editT?.title?.length||0) + '/30';
+  $('t-desc').value = editT?.description || '';
+  $('desc-ct').textContent = (editT?.description?.length||0) + '/200';
+  $('title-err').style.display = 'none';
+
+  // project select
+  const sel = $('t-project');
+  sel.innerHTML = '<option value="">Inbox</option>' +
+    projects.map(p=>`<option value="${p.id}" ${(editT?.project||defaultProject)===p.id?'selected':''}>${esc(p.name)}</option>`).join('');
+
+  // due date
+  $('t-due').value = selDue;
+  syncChips();
+
+  // priority
+  updatePrioButtons(selPrio);
+
+  // subtasks
+  renderSubFields();
+
+  $('task-modal').style.display = 'flex';
+  setTimeout(()=>$('t-title').focus(), 80);
+}
+
+function closeTaskModal() {
+  $('task-modal').style.display='none';
+  editingTaskId=null; subtaskFields=[];
+}
+
+function setChip(val) {
+  if (val==='today')    selDue = todayStr();
+  else if (val==='tomorrow') selDue = tomorrowStr();
+  else selDue = '';
+  $('t-due').value = selDue;
+  syncChips();
+}
+function syncChips() {
+  selDue = $('t-due').value;
+  const t=todayStr(), tm=tomorrowStr();
+  document.querySelectorAll('.chip').forEach(c => {
+    c.classList.remove('active');
+    const v = c.dataset.chip;
+    if ((v==='today'&&selDue===t)||(v==='tomorrow'&&selDue===tm)||(v==='none'&&!selDue))
+      c.classList.add('active');
+  });
+}
+
+function setPrio(p) { selPrio=p; updatePrioButtons(p); }
+function updatePrioButtons(p) {
+  document.querySelectorAll('.prio-btn').forEach(b => {
+    b.className = 'prio-btn';
+    if (b.dataset.prio === p) b.classList.add('active-'+p);
+  });
+}
+
+function addSubField() {
+  if (subtaskFields.length >= 5) return;
+  subtaskFields.push({id:uid(), title:'', completed:false});
+  renderSubFields();
+  setTimeout(()=>{ const ins=document.querySelectorAll('#sub-list input'); if(ins.length) ins[ins.length-1].focus(); },40);
+}
+function renderSubFields() {
+  const ct = subtaskFields.length;
+  $('sub-ct').textContent = ct+'/5';
+  $('add-sub-btn').style.display = ct>=5 ? 'none' : 'flex';
+  $('sub-list').innerHTML = subtaskFields.map((s,i)=>`
+    <div style="display:flex;align-items:center;gap:8px;">
+      <div style="width:5px;height:5px;border-radius:50%;background:#333;flex-shrink:0;"></div>
+      <input type="text" class="form-field" style="flex:1;padding:6px 10px;font-size:13px;"
+             placeholder="Subtask ${i+1}…" maxlength="50"
+             value="${esc(s.title)}"
+             oninput="subtaskFields[${i}].title=this.value" />
+      <button onclick="removeSubField(${i})"
+              style="padding:4px;border-radius:5px;background:none;border:none;color:#555;cursor:pointer;flex-shrink:0;transition:color .1s;"
+              onmouseenter="this.style.color='#ef4444'" onmouseleave="this.style.color='#555'">
+        <svg style="width:13px;height:13px;" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+      </button>
+    </div>`).join('');
+}
+function removeSubField(i) { subtaskFields.splice(i,1); renderSubFields(); }
+
+function saveTask() {
+  const title = $('t-title').value.trim();
+  if (!title) { $('title-err').style.display='block'; $('t-title').focus(); return; }
+  $('title-err').style.display='none';
+
+  const subs = subtaskFields.filter(s=>s.title.trim()).map(s=>({...s, title:s.title.trim()}));
+  const data = { title, dueDate:selDue, priority:selPrio,
+                 description:$('t-desc').value.trim(), project:$('t-project').value, subtasks:subs };
+
+  if (editingTaskId) {
+    const i = tasks.findIndex(x=>x.id===editingTaskId);
+    if (i>=0) tasks[i] = {...tasks[i], ...data, lastUpdatedAt:todayStr()};
+  } else {
+    tasks.unshift({ id:uid(), ...data, completed:false, completedAt:null, createdAt:todayStr(),
+                    owner: currentUser?.id || '', lastUpdatedAt:todayStr() });
+  }
+  persist(); closeTaskModal(); render(); toast(editingTaskId ? 'Task updated' : 'Task added');
+}
+
+// ─── Habit modal ──────────────────────────────────────────
+function openHabitModal() {
+  $('h-name').value=''; $('h-freq').value='daily'; $('h-cat').value='health';
+  $('h-name-err').style.display='none';
+  if ($('h-shared')) $('h-shared').checked = false;
+  // Show share option only if a second user exists
+  const shareRow = $('h-share-row');
+  if (shareRow) shareRow.style.display = getUsers().length > 1 ? 'block' : 'none';
+  $('habit-modal').style.display='flex';
+  setTimeout(()=>$('h-name').focus(), 80);
+}
+function saveHabit() {
+  const name = $('h-name').value.trim();
+  if (!name) { $('h-name-err').style.display='block'; return; }
+  const shared = $('h-shared')?.checked || false;
+  const userId = currentUser?.id || '';
+  habits.push({
+    id:uid(), name, frequency:$('h-freq').value, category:$('h-cat').value,
+    checkIns:[], checkInsByUser:{ [userId]:[] },
+    shared, createdBy: userId, owner: userId, createdAt:todayStr()
+  });
+  persist(); $('habit-modal').style.display='none'; render(); toast('Habit added');
+}
+
+// ─── Goal modal ───────────────────────────────────────────
+function openGoalModal() {
+  $('g-name').value=''; $('g-period').value='weekly'; $('g-target').value='5';
+  $('g-name-err').style.display='none';
+  $('g-habit').innerHTML = '<option value="">None (standalone)</option>' +
+    habits.map(h=>`<option value="${h.id}">${esc(h.name)}</option>`).join('');
+  $('goal-modal').style.display='flex';
+  setTimeout(()=>$('g-name').focus(), 80);
+}
+function saveGoal() {
+  const name = $('g-name').value.trim();
+  if (!name) { $('g-name-err').style.display='block'; return; }
+  goals.push({ id:uid(), name, habitId:$('g-habit').value, period:$('g-period').value,
+               target: parseInt($('g-target').value)||5 });
+  persist(); $('goal-modal').style.display='none'; render(); toast('Goal added');
+}
+
+// ─── Toast ────────────────────────────────────────────────
+let toastTimer;
+function toast(msg) {
+  const el = $('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(()=>el.classList.remove('show'), 2400);
+}
+
+// ─── Family / Shared Lists ────────────────────────────────
+function openSharedListModal() {
+  $('sl-name').value=''; $('sl-name-err').style.display='none';
+  $('shared-list-modal').style.display='flex';
+  setTimeout(()=>$('sl-name').focus(), 80);
+}
+
+function saveSharedList() {
+  const name = $('sl-name').value.trim();
+  if (!name) { $('sl-name-err').style.display='block'; return; }
+  sharedLists.push({ id:uid(), name, createdBy: currentUser.id, createdAt: new Date().toISOString(), items:[] });
+  persist(); $('shared-list-modal').style.display='none'; render(); toast(`"${name}" created`);
+}
+
+function addSharedItem(listId) {
+  const input = document.getElementById('si-input-'+listId);
+  if (!input) return;
+  const text = input.value.trim();
+  if (!text) return;
+  const list = sharedLists.find(l=>l.id===listId);
+  if (!list) return;
+  const now = new Date().toISOString();
+  list.items.push({ id:uid(), text, completed:false, completedBy:null,
+                    createdBy: currentUser.id, createdAt:now, lastUpdatedAt:now, lastUpdatedBy: currentUser.id });
+  persist(); render();
+}
+
+function toggleSharedItem(listId, itemId) {
+  const list = sharedLists.find(l=>l.id===listId);
+  const item = list?.items.find(i=>i.id===itemId);
+  if (!item) return;
+  item.completed = !item.completed;
+  item.completedBy = item.completed ? currentUser.id : null;
+  item.lastUpdatedAt = new Date().toISOString();
+  item.lastUpdatedBy = currentUser.id;
+  persist(); render();
+}
+
+function deleteSharedItem(listId, itemId) {
+  const list = sharedLists.find(l=>l.id===listId);
+  if (!list) return;
+  list.items = list.items.filter(i=>i.id!==itemId);
+  persist(); render(); sbDeleteSharedItem(itemId);
+}
+
+function confirmDeleteSharedList(listId) {
+  const list = sharedLists.find(l=>l.id===listId);
+  if (!list) return;
+  if (list.createdBy !== currentUser.id) { toast('Only the creator can delete this list'); return; }
+  $('confirm-msg').textContent = `Delete "${list.name}"? All items will be removed.`;
+  confirmCb = () => { sharedLists = sharedLists.filter(l=>l.id!==listId); persist(); render(); sbDeleteSharedList(listId); toast('List deleted'); };
+  $('confirm-modal').style.display = 'flex';
+}
+
+function renderFamilyLists(m) {
+  function userById(id) {
+    const p = _allProfiles.find(u=>u.id===id);
+    if (!p) return null;
+    return { id: p.id, displayName: p.display_name, initials: p.initials, avatarColor: p.avatar_color };
+  }
+
+  const cards = sharedLists.map(list => {
+    const pending = list.items.filter(i=>!i.completed).length;
+    const total   = list.items.length;
+    const creator = userById(list.createdBy);
+    return `<div style="background:#1a1a1a;border:1px solid #252525;border-radius:12px;padding:16px;transition:border-color .15s;" class="habit-card">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+        <div>
+          <div style="font-size:15px;font-weight:600;color:#e0e0e0;">${esc(list.name)}</div>
+          <div style="font-size:11px;color:#555;margin-top:2px;">${pending}/${total} remaining · by ${esc(creator?.displayName||'?')}</div>
+        </div>
+        <button onclick="confirmDeleteSharedList('${list.id}')"
+                style="padding:4px;border-radius:6px;background:none;border:none;color:#444;cursor:pointer;transition:color .12s;"
+                onmouseenter="this.style.color='#ef4444'" onmouseleave="this.style.color='#444'">
+          <svg style="width:13px;height:13px;" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+        </button>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:6px;margin-bottom:10px;">
+        ${list.items.map(item => {
+          const updater = userById(item.lastUpdatedBy);
+          return `<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid #222;">
+            <div class="task-cb ${item.completed?'done':''}" style="flex-shrink:0;" onclick="toggleSharedItem('${list.id}','${item.id}')">
+              ${item.completed?`<svg style="width:8px;height:8px;" fill="none" stroke="white" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"/></svg>`:''}
+            </div>
+            <span style="flex:1;font-size:13px;color:${item.completed?'#555':'#e0e0e0'};${item.completed?'text-decoration:line-through':''}">${esc(item.text)}</span>
+            ${updater ? `<div style="width:18px;height:18px;border-radius:50%;background:${updater.avatarColor};display:flex;align-items:center;justify-content:center;color:#fff;font-size:9px;font-weight:700;flex-shrink:0;" title="${esc(updater.displayName)}">${esc(updater.initials)}</div>` : ''}
+            <button onclick="deleteSharedItem('${list.id}','${item.id}')"
+                    style="padding:2px;border-radius:4px;background:none;border:none;color:#444;cursor:pointer;opacity:0;transition:opacity .1s;"
+                    onmouseenter="this.style.opacity='1';this.style.color='#ef4444'" onmouseleave="this.style.opacity='0'">
+              <svg style="width:11px;height:11px;" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+            </button>
+          </div>`;
+        }).join('')}
+      </div>
+      <div style="display:flex;gap:8px;">
+        <input id="si-input-${list.id}" type="text" class="form-field" placeholder="Add item…" maxlength="60"
+               style="flex:1;font-size:13px;padding:7px 10px;"
+               onkeydown="if(event.key==='Enter')addSharedItem('${list.id}');" />
+        <button onclick="addSharedItem('${list.id}')"
+                style="padding:7px 12px;background:#333;border:none;border-radius:7px;color:#e0e0e0;font-size:12px;cursor:pointer;font-family:inherit;transition:background .12s;flex-shrink:0;"
+                onmouseenter="this.style.background='#3f3f3f'" onmouseleave="this.style.background='#333'">Add</button>
+      </div>
+    </div>`;
+  }).join('');
+
+  m.innerHTML = `<div style="max-width:680px;margin:0 auto;padding:36px 40px;">
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:28px;">
+      <div>
+        <h1 style="font-size:28px;font-weight:700;margin:0 0 4px;">Family Lists</h1>
+        <p style="font-size:13px;color:#555;margin:0;">${sharedLists.length} list${sharedLists.length!==1?'s':''}</p>
+      </div>
+      <button onclick="openSharedListModal()"
+        style="display:flex;align-items:center;gap:6px;padding:9px 16px;background:#db4035;color:#fff;font-size:13px;font-weight:500;border:none;border-radius:9px;cursor:pointer;transition:background .12s;font-family:inherit;"
+        onmouseenter="this.style.background='#c53929'" onmouseleave="this.style.background='#db4035'">
+        <svg style="width:14px;height:14px;" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+        New List
+      </button>
+    </div>
+    ${sharedLists.length ? `<div style="display:flex;flex-direction:column;gap:12px;">${cards}</div>` :
+      emptyAction('No shared lists yet. Create one for groceries, chores, or errands!','openSharedListModal()','Create First List','#db4035','#c53929')}
+  </div>`;
+}
+
+// ─── Settings view ────────────────────────────────────────
+function renderSettings(m) {
+  const otherProfile = _allProfiles.find(p => p.id !== currentUser.id);
+  const otherUser = otherProfile ? { id: otherProfile.id, displayName: otherProfile.display_name, initials: otherProfile.initials, avatarColor: otherProfile.avatar_color, email: otherProfile.email || '' } : null;
+  const invite = _cachedInviteCode;
+
+  m.innerHTML = `<div style="max-width:560px;margin:0 auto;padding:36px 40px;">
+    <h1 style="font-size:28px;font-weight:700;margin:0 0 28px;">Settings</h1>
+
+    <!-- Account section -->
+    <div style="background:#1a1a1a;border:1px solid #252525;border-radius:12px;padding:20px;margin-bottom:16px;">
+      <div style="font-size:11px;font-weight:600;color:#555;text-transform:uppercase;letter-spacing:.07em;margin-bottom:14px;">Account</div>
+      <div style="display:flex;align-items:center;gap:14px;margin-bottom:16px;">
+        <div style="width:44px;height:44px;border-radius:50%;background:${currentUser.avatarColor};display:flex;align-items:center;justify-content:center;color:#fff;font-size:18px;font-weight:700;flex-shrink:0;">${esc(currentUser.initials)}</div>
+        <div>
+          <div style="font-size:15px;font-weight:600;color:#e0e0e0;">${esc(currentUser.displayName)}</div>
+          <div style="font-size:12px;color:#555;">${esc(currentUser.email)}</div>
+        </div>
+      </div>
+      <button onclick="logout()"
+              style="width:100%;padding:9px;border:1px solid #333;border-radius:8px;background:none;color:#a0a0a0;font-size:13px;cursor:pointer;font-family:inherit;transition:all .12s;text-align:center;"
+              onmouseenter="this.style.color='#e8e8e8';this.style.borderColor='#555'" onmouseleave="this.style.color='#a0a0a0';this.style.borderColor='#333'">Sign Out</button>
+    </div>
+
+    <!-- Family section -->
+    <div style="background:#1a1a1a;border:1px solid #252525;border-radius:12px;padding:20px;margin-bottom:16px;">
+      <div style="font-size:11px;font-weight:600;color:#555;text-transform:uppercase;letter-spacing:.07em;margin-bottom:14px;">Family</div>
+      ${otherUser ? `
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;">
+          <div style="width:32px;height:32px;border-radius:50%;background:${otherUser.avatarColor};display:flex;align-items:center;justify-content:center;color:#fff;font-size:13px;font-weight:700;">${esc(otherUser.initials)}</div>
+          <div style="flex:1;">
+            <div style="font-size:14px;color:#e0e0e0;">${esc(otherUser.displayName)}</div>
+            <div style="font-size:11px;color:#555;">${esc(otherUser.email)}</div>
+          </div>
+          <span style="font-size:11px;padding:2px 8px;border-radius:8px;background:rgba(34,197,94,.1);color:#22c55e;font-weight:500;">Connected</span>
+        </div>` : `
+        <p style="font-size:13px;color:#555;margin:0 0 12px;">No partner connected yet.</p>
+        ${invite ? `
+          <div style="background:#161616;border:1px solid #2a2a2a;border-radius:8px;padding:12px;margin-bottom:10px;">
+            <div style="font-size:11px;color:#555;margin-bottom:6px;">Share this invite code with your partner:</div>
+            <div style="font-size:20px;font-weight:700;letter-spacing:.15em;color:#db4035;margin-bottom:8px;">${invite.code}</div>
+            <button onclick="navigator.clipboard.writeText('${invite.code}').then(()=>toast('Code copied!'))"
+                    style="font-size:12px;color:#db4035;background:none;border:none;cursor:pointer;padding:0;">Copy code</button>
+          </div>` : `
+          <button onclick="showGeneratedCode()"
+                  style="padding:9px 16px;background:#db4035;color:#fff;font-size:13px;font-weight:500;border:none;border-radius:8px;cursor:pointer;font-family:inherit;transition:background .12s;"
+                  onmouseenter="this.style.background='#c53929'" onmouseleave="this.style.background='#db4035'">Generate Invite Code</button>`}
+      `}
+    </div>
+
+    <!-- Data section -->
+    <div style="background:#1a1a1a;border:1px solid #252525;border-radius:12px;padding:20px;">
+      <div style="font-size:11px;font-weight:600;color:#555;text-transform:uppercase;letter-spacing:.07em;margin-bottom:14px;">Data</div>
+      <p style="font-size:13px;color:#555;margin:0 0 12px;">${tasks.length} tasks · ${habits.length} habits · ${goals.length} goals · ${sharedLists.length} shared lists</p>
+      <p style="font-size:11px;color:#444;margin:0;">Data is synced to Supabase and cached locally in your browser.</p>
+    </div>
+  </div>`;
+}
+
+async function showGeneratedCode() {
+  const code = await generateInviteCode();
+  _cachedInviteCode = { code, createdAt: new Date().toISOString() };
+  toast(`Invite code: ${code} — share this with your partner`);
+  renderSettings($('main'));
+}
+
+// ─── Sync status ──────────────────────────────────────────
+function updateSyncStatus(state) {
+  const dot   = $('sync-dot');
+  const label = $('sync-label');
+  if (!dot || !label) return;
+  const states = {
+    synced:    { color:'#22c55e', text:'Synced' },
+    pending:   { color:'#f97316', text:'Out of Sync' },
+    syncing:   { color:'#3b82f6', text:'Syncing…' },
+    failed:    { color:'#ef4444', text:'Sync Failed' },
+  };
+  const s = states[state] || states.synced;
+  dot.style.background   = s.color;
+  label.textContent      = s.text;
+}
+
+async function manualSync() {
+  if (!currentUser) return;
+  updateSyncStatus('syncing');
+  try {
+    await sbPushAll(currentUser.id);
+    updateSyncStatus('synced');
+    toast('Synced to Supabase');
+  } catch(e) {
+    updateSyncStatus('failed');
+    toast('Sync failed — check your connection');
+  }
+}
+
+// ─── Close modals on backdrop click ──────────────────────
+['task-modal','habit-modal','goal-modal','confirm-modal','shared-list-modal'].forEach(id=>{
+  $(id).addEventListener('click', e=>{ if(e.target===$(id)) { if(id==='confirm-modal') closeConfirm(); else $(id).style.display='none'; }});
+});
+
+// ─── Keyboard shortcuts ───────────────────────────────────
+document.addEventListener('keydown', e=>{
+  if (e.key==='Escape') {
+    closeTaskModal();
+    $('habit-modal').style.display='none';
+    $('goal-modal').style.display='none';
+    $('shared-list-modal').style.display='none';
+    closeConfirm();
+  }
+  if ((e.ctrlKey||e.metaKey) && e.key==='k') { e.preventDefault(); nav('search'); }
+  if ((e.ctrlKey||e.metaKey) && e.key==='n') { e.preventDefault(); openTaskModal(); }
+});
+
+// ─── Enter key in modals ──────────────────────────────────
+$('t-title').addEventListener('keydown', e=>{ if(e.key==='Enter') saveTask(); });
+$('h-name').addEventListener ('keydown', e=>{ if(e.key==='Enter') saveHabit(); });
+$('g-name').addEventListener ('keydown', e=>{ if(e.key==='Enter') saveGoal(); });
+
+</script>
+<script src="supabase.js"></script>
+<script src="projects.js"></script>
+<script src="auth.js"></script>
+<script src="dashboard.js"></script>
+<script>
+// ─── Boot ─────────────────────────────────────────────────
+(async () => {
+  loadProjects();
+  const authed = await initAuth();
+  if (authed) {
+    await load();
+    render();
+    updateSyncStatus('synced');
+  }
+})();
+</script>
+</body>
+</html>

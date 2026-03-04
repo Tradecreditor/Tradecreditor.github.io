@@ -98,6 +98,14 @@
       border-radius: 8px; border: 1px solid #333; z-index: 200;
       transition: transform 0.3s cubic-bezier(.16,1,.3,1), opacity 0.3s; opacity: 0; pointer-events: none; }
     #toast.show { transform: translateX(-50%) translateY(0); opacity: 1; }
+
+    /* Drag and drop */
+    .dragging            { opacity: 0.4; }
+    .drag-over           { outline: 2px dashed #db4035; outline-offset: -2px; border-radius: 8px; }
+    .date-section-drop.drag-over { background: rgba(219,64,53,0.07); outline: 2px dashed #db4035; outline-offset: -2px; border-radius: 8px; }
+    .drag-handle         { cursor: grab; color: #3a3a3a; padding: 0 4px; flex-shrink: 0; display: flex; align-items: center; }
+    .drag-handle:hover   { color: #666; }
+    .drag-handle:active  { cursor: grabbing; }
   </style>
 </head>
 <body style="background:#121212; color:#e8e8e8; font-family:'DM Sans',sans-serif; height:100vh; overflow:hidden;">
@@ -292,6 +300,10 @@
       Family Lists
       <span id="sb-family-ct" style="margin-left:auto;font-size:12px;color:#555;"></span>
     </button>
+    <button onclick="nav('calendar')" id="n-calendar" class="nav-item">
+      <svg style="width:15px;height:15px;flex-shrink:0;" fill="none" stroke="currentColor" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"/><line x1="16" y1="2" x2="16" y2="6" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"/><line x1="8" y1="2" x2="8" y2="6" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"/><line x1="3" y1="10" x2="21" y2="10" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"/></svg>
+      Upcoming
+    </button>
     <button onclick="nav('settings')" id="n-settings" class="nav-item">
       <svg style="width:15px;height:15px;flex-shrink:0;" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
       Settings
@@ -350,7 +362,7 @@
           <span id="title-ct" style="font-size:11px;color:#444;">0/30</span>
         </div>
         <input id="t-title" type="text" maxlength="30" placeholder="Task title…" class="form-field"
-               oninput="$('title-ct').textContent=this.value.length+'/30'" />
+               oninput="$('title-ct').textContent=this.value.length+'/30';syncHabitNameIfBlank();" />
         <p id="title-err" style="font-size:11px;color:#ef4444;margin-top:4px;display:none;">Title is required</p>
       </div>
 
@@ -362,7 +374,19 @@
           <button class="chip" data-chip="tomorrow"  onclick="setChip('tomorrow')">Tomorrow</button>
           <button class="chip" data-chip="none"      onclick="setChip('none')">No Date</button>
         </div>
-        <input id="t-due" type="date" class="form-field" onchange="syncChips()" />
+        <div style="position:relative;">
+          <input id="t-due-display" type="text" class="form-field" placeholder="Pick a date…" readonly
+                 style="cursor:pointer;width:100%;" onclick="toggleCalPopup()" />
+          <input id="t-due" type="hidden" />
+          <div id="cal-popup" style="display:none;position:fixed;z-index:1000;background:#1e1e1e;border:1px solid #2a2a2a;border-radius:12px;padding:14px;box-shadow:0 16px 48px rgba(0,0,0,.7);width:272px;">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+              <button onclick="calNav(-1)" style="padding:4px 10px;border-radius:6px;background:none;border:1px solid #2a2a2a;color:#888;cursor:pointer;font-size:16px;line-height:1;font-family:inherit;transition:color .1s,border-color .1s;" onmouseenter="this.style.color='#e8e8e8';this.style.borderColor='#444'" onmouseleave="this.style.color='#888';this.style.borderColor='#2a2a2a'">‹</button>
+              <span id="cal-month-label" style="font-size:13px;font-weight:600;color:#e8e8e8;"></span>
+              <button onclick="calNav(1)"  style="padding:4px 10px;border-radius:6px;background:none;border:1px solid #2a2a2a;color:#888;cursor:pointer;font-size:16px;line-height:1;font-family:inherit;transition:color .1s,border-color .1s;" onmouseenter="this.style.color='#e8e8e8';this.style.borderColor='#444'" onmouseleave="this.style.color='#888';this.style.borderColor='#2a2a2a'">›</button>
+            </div>
+            <div id="cal-grid" style="display:grid;grid-template-columns:repeat(7,1fr);gap:2px;text-align:center;"></div>
+          </div>
+        </div>
       </div>
 
       <!-- Priority -->
@@ -380,6 +404,27 @@
       <div>
         <label style="font-size:11px;font-weight:600;color:#666;text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:6px;">Project</label>
         <select id="t-project" class="form-field"></select>
+      </div>
+
+      <!-- Repeat -->
+      <div>
+        <label style="font-size:11px;font-weight:600;color:#666;text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:8px;">Repeat</label>
+        <select id="t-recurrence" class="form-field" onchange="onRecurrenceChange()">
+          <option value="none">None</option>
+          <option value="daily">Daily</option>
+          <option value="weekdays">Weekdays (Mon–Fri)</option>
+          <option value="weekly">Weekly (same day)</option>
+          <option value="monthly">Monthly (same date)</option>
+        </select>
+      </div>
+
+      <!-- Habit name (shown when recurrence ≠ none) -->
+      <div id="t-habit-name-row" style="display:none;">
+        <label style="font-size:11px;font-weight:600;color:#666;text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:6px;">Habit Name</label>
+        <input id="t-habit-name" type="text" maxlength="60" class="form-field"
+               placeholder="Name for the habit tracker…"
+               oninput="this.dataset.userModified='true';" />
+        <p style="font-size:11px;color:#555;margin-top:4px;margin-bottom:0;">Completing this task checks in on this habit. Names are independent.</p>
       </div>
 
       <!-- Description -->
@@ -550,12 +595,36 @@ const CATINFO = {
   other:       {emoji:'✨', color:'#888'},
 };
 
+// ─── Priority sort ────────────────────────────────────────
+const PRIO_ORDER = { critical: 0, high: 1, medium: 2, low: 3 };
+function sortByPriority(arr) {
+  return [...arr].sort((a, b) => {
+    const pd = (PRIO_ORDER[a.priority] ?? 3) - (PRIO_ORDER[b.priority] ?? 3);
+    if (pd !== 0) return pd;
+    return (a.sortOrder ?? 0) - (b.sortOrder ?? 0);
+  });
+}
+
+// ─── Calendar helpers ─────────────────────────────────────
+function getWeekDays(offset) {
+  const today = new Date();
+  const mon = new Date(today);
+  mon.setDate(today.getDate() - ((today.getDay() + 6) % 7) + offset * 7);
+  return Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(mon); d.setDate(mon.getDate() + i); return d;
+  });
+}
+function dateToStr(d) { return d.toISOString().slice(0, 10); }
+
 // ─── State ───────────────────────────────────────────────
 let S = { view:'today', project:null };
 let tasks=[], habits=[], goals=[], sharedLists=[];
 let editingTaskId=null, subtaskFields=[], selPrio='medium', selDue=todayStr();
 let confirmCb=null;
+let calYear=new Date().getFullYear(), calMonth=new Date().getMonth();
 let _allProfiles=[], _cachedInviteCode=null;
+let _dragId = null;
+let calendarWeekOffset = 0;
 
 // ─── Storage ─────────────────────────────────────────────
 function persist() {
@@ -576,6 +645,7 @@ async function load() {
   try { habits      = JSON.parse(localStorage.getItem('tf_habits'))       || []; } catch(e){ habits=[];      }
   try { goals       = JSON.parse(localStorage.getItem('tf_goals'))        || []; } catch(e){ goals=[];       }
   try { sharedLists = JSON.parse(localStorage.getItem('tf_shared_lists')) || []; } catch(e){ sharedLists=[]; }
+  tasks.forEach((t, i) => { if (t.sortOrder == null) t.sortOrder = i; });
 
   // Supabase fetch (source of truth) — overrides cache
   if (currentUser) {
@@ -587,7 +657,8 @@ async function load() {
       ]);
       tasks = remote.tasks; habits = remote.habits;
       goals = remote.goals; sharedLists = remote.sharedLists;
-      if (remote.projects.length) { projects = remote.projects; saveProjects(); }
+      tasks.forEach((t, i) => { if (t.sortOrder == null) t.sortOrder = i; });
+      projects = remote.projects; saveProjects();
       _allProfiles      = profiles;
       _cachedInviteCode = inviteCode;
       // Update localStorage cache
@@ -607,7 +678,7 @@ function mk(title, due, prio, desc, proj, subs, completed=false) {
 }
 
 // ─── Nav ─────────────────────────────────────────────────
-const NAV_IDS = ['search','inbox','today','completed','habits','goals','dashboard','family','settings'];
+const NAV_IDS = ['search','inbox','today','completed','habits','goals','dashboard','family','calendar','settings'];
 function nav(view, project=null) {
   S.view = view; S.project = project;
   NAV_IDS.forEach(id => {
@@ -692,12 +763,16 @@ function render() {
   else if (S.view==='search')    renderSearch(m);
   else if (S.view==='dashboard') renderDashboard(m);
   else if (S.view==='family')    renderFamilyLists(m);
+  else if (S.view==='calendar')  renderCalendar(m);
   else if (S.view==='settings')  renderSettings(m);
 }
 
 // ─── Task row HTML ────────────────────────────────────────
 function taskRowHTML(task, forceOverdue=false) {
-  const ov = forceOverdue || isOverdue(task.dueDate);
+  const isRecurring = task.recurrence && task.recurrence !== 'none';
+  const recurDoneToday = isRecurring && isRecurringTaskDoneToday(task);
+  const ov = !isRecurring && (forceOverdue || isOverdue(task.dueDate));
+  const ip = !!task.inProgress;
   const pc = PCOLORS[task.priority] || '#6b7280';
   const proj = projects.find(p => p.id===task.project);
   const sdone = task.subtasks?.filter(s=>s.completed).length||0;
@@ -706,12 +781,31 @@ function taskRowHTML(task, forceOverdue=false) {
 
   return `
   <div class="task-row fade-in ${ov?'overdue-row':''}" data-tid="${task.id}"
+       draggable="true"
+       ondragstart="onTaskDragStart(event,'${task.id}')"
+       ondragover="onTaskDragOver(event)"
+       ondragleave="onTaskDragLeave(event)"
+       ondrop="onTaskDrop(event,'${task.id}')"
        style="display:flex;align-items:flex-start;gap:10px;padding:8px 8px;border-radius:8px;cursor:default;transition:background .1s;margin-bottom:2px;">
-    <div class="task-cb p-${task.priority}" onclick="completeTask('${task.id}')" title="Complete"></div>
+    <span class="drag-handle" title="Drag to reorder">
+      <svg width="10" height="14" viewBox="0 0 10 14" fill="currentColor">
+        <circle cx="2" cy="2" r="1.5"/><circle cx="8" cy="2" r="1.5"/>
+        <circle cx="2" cy="7" r="1.5"/><circle cx="8" cy="7" r="1.5"/>
+        <circle cx="2" cy="12" r="1.5"/><circle cx="8" cy="12" r="1.5"/>
+      </svg>
+    </span>
+    <div class="task-cb p-${task.priority} ${recurDoneToday ? 'done check-pop' : ''}"
+         onclick="${isRecurring ? `checkInRecurringTask('${task.id}')` : `completeTask('${task.id}')`}"
+         title="${isRecurring ? (recurDoneToday ? 'Undo check-in' : 'Check in') : 'Complete'}"
+         style="${recurDoneToday ? 'background:#db4035;border-color:#db4035;' : ''}">
+      ${recurDoneToday ? `<svg style="width:8px;height:8px;" fill="none" stroke="white" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"/></svg>` : ''}
+    </div>
     <div style="flex:1;min-width:0;">
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
         <span style="font-size:14px;color:#e0e0e0;line-height:1.4;">${esc(task.title)}</span>
         ${ov ? `<span style="font-size:10px;padding:2px 7px;border-radius:10px;background:rgba(249,115,22,.15);color:#fb923c;font-weight:500;">Overdue</span>` : ''}
+        ${isRecurring ? `<span style="font-size:9px;padding:1px 5px;border-radius:8px;background:rgba(59,130,246,.15);color:#3b82f6;font-weight:500;border:1px solid rgba(59,130,246,.25);">↻ ${task.recurrence}</span>` : ''}
+        ${ip ? `<span style="font-size:10px;padding:1px 6px;border-radius:8px;background:rgba(249,115,22,.15);color:#f97316;font-weight:500;border:1px solid rgba(249,115,22,.25);">In Progress</span>` : ''}
       </div>
       ${task.description ? `
         <div style="margin-top:2px;">
@@ -752,6 +846,11 @@ function taskRowHTML(task, forceOverdue=false) {
       </div>` : ''}
     </div>
     <div class="task-actions" style="display:flex;align-items:center;gap:2px;flex-shrink:0;">
+      <button onclick="toggleInProgress('${task.id}')" title="${ip ? 'Mark pending' : 'Mark in progress'}"
+              style="padding:5px;border-radius:6px;background:none;border:none;color:${ip ? '#f97316' : '#555'};cursor:pointer;transition:color .1s;"
+              onmouseenter="this.style.color='#f97316'" onmouseleave="this.style.color='${ip ? '#f97316' : '#555'}'">
+        <svg style="width:13px;height:13px;" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+      </button>
       <button onclick="editTask('${task.id}')" title="Edit"
               style="padding:5px;border-radius:6px;background:none;border:none;color:#555;cursor:pointer;transition:color .1s;"
               onmouseenter="this.style.color='#e8e8e8'" onmouseleave="this.style.color='#555'">
@@ -764,6 +863,45 @@ function taskRowHTML(task, forceOverdue=false) {
       </button>
     </div>
   </div>`;
+}
+
+// ─── Drag handlers ────────────────────────────────────────
+function onTaskDragStart(e, id) {
+  _dragId = id;
+  setTimeout(() => e.target.closest('.task-row')?.classList.add('dragging'), 0);
+  e.dataTransfer.effectAllowed = 'move';
+}
+function onTaskDragOver(e) {
+  e.preventDefault();
+  e.dataTransfer.dropEffect = 'move';
+  e.currentTarget.classList.add('drag-over');
+}
+function onTaskDragLeave(e) {
+  e.currentTarget.classList.remove('drag-over');
+}
+function onTaskDrop(e, targetId) {
+  e.preventDefault();
+  e.currentTarget.classList.remove('drag-over');
+  if (!_dragId || _dragId === targetId) { _dragId = null; return; }
+  const from = tasks.findIndex(t => t.id === _dragId);
+  const to   = tasks.findIndex(t => t.id === targetId);
+  if (from === -1 || to === -1) { _dragId = null; return; }
+  const [moved] = tasks.splice(from, 1);
+  tasks.splice(to, 0, moved);
+  tasks.forEach((t, i) => t.sortOrder = i);
+  _dragId = null;
+  persist(); render();
+}
+function onDateSectionDrop(dateStr, e) {
+  e.preventDefault();
+  e.currentTarget.classList.remove('drag-over');
+  if (!_dragId) return;
+  const task = tasks.find(t => t.id === _dragId);
+  if (task && (!task.recurrence || task.recurrence === 'none')) {
+    task.dueDate = dateStr;
+    persist(); render();
+  }
+  _dragId = null;
 }
 
 function addTaskBtn(projectId='') {
@@ -794,10 +932,13 @@ function renderToday(m) {
   const now = new Date();
   const dateLabel = `${monNames[now.getMonth()]} ${now.getDate()} · Today · ${dayNames[now.getDay()]}`;
 
-  const todayTasks   = tasks.filter(x => !x.completed && x.dueDate===t);
-  const overdueTasks = tasks.filter(x => !x.completed && isOverdue(x.dueDate));
-  const noDueTasks   = tasks.filter(x => !x.completed && !x.dueDate);
-  const total = todayTasks.length + overdueTasks.length;
+  const recurringTasks    = tasks.filter(x => x.recurrence && x.recurrence !== 'none');
+  const regularTasks      = tasks.filter(x => !x.recurrence || x.recurrence === 'none');
+  const todayTasks        = sortByPriority(regularTasks.filter(x => !x.completed && x.dueDate===t));
+  const overdueTasks      = sortByPriority(regularTasks.filter(x => !x.completed && isOverdue(x.dueDate)));
+  const noDueTasks        = sortByPriority(regularTasks.filter(x => !x.completed && !x.dueDate));
+  const recurringDueToday = recurringTasks.filter(x => isRecurringDueToday(x));
+  const total = todayTasks.length + overdueTasks.length + recurringDueToday.length;
 
   let html = `<div style="max-width:680px;margin:0 auto;padding:36px 40px;">
     <h1 style="font-size:28px;font-weight:700;margin:0 0 4px;">Today</h1>
@@ -823,7 +964,7 @@ function renderToday(m) {
 
   html += `<div style="margin-bottom:4px;">
     ${sectionHeader(dateLabel)}
-    <div id="today-list">${todayTasks.map(t=>taskRowHTML(t)).join('')}</div>
+    <div id="today-list">${[...recurringDueToday, ...todayTasks].map(t=>taskRowHTML(t)).join('')}</div>
     ${addTaskBtn()}
   </div>`;
 
@@ -866,7 +1007,7 @@ function rescheduleAll() {
 
 // ─── Inbox view ───────────────────────────────────────────
 function renderInbox(m) {
-  const list = tasks.filter(x => !x.completed && !x.project);
+  const list = sortByPriority(tasks.filter(x => !x.completed && !x.project));
   m.innerHTML = `<div style="max-width:680px;margin:0 auto;padding:36px 40px;">
     <h1 style="font-size:28px;font-weight:700;margin:0 0 4px;">Inbox</h1>
     <p style="font-size:13px;color:#555;margin:0 0 28px;">${list.length} task${list.length!==1?'s':''}</p>
@@ -879,7 +1020,7 @@ function renderInbox(m) {
 function renderProject(m, pid) {
   const proj = projects.find(p=>p.id===pid);
   if (!proj) return;
-  const list = tasks.filter(x => !x.completed && x.project===pid);
+  const list = sortByPriority(tasks.filter(x => !x.completed && x.project===pid));
   const ov   = list.filter(x => isOverdue(x.dueDate));
   const curr = list.filter(x => !isOverdue(x.dueDate));
 
@@ -948,7 +1089,7 @@ function renderHabits(m) {
           <div style="width:36px;height:36px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:18px;background:${info.color}1a;border:1px solid ${info.color}33;">${info.emoji}</div>
           <div>
             <div style="font-size:14px;font-weight:500;color:#e0e0e0;">${esc(h.name)}</div>
-            <div style="font-size:11px;color:#555;text-transform:capitalize;margin-top:1px;">${h.frequency} · ${h.category}</div>
+            <div style="font-size:11px;color:#555;text-transform:capitalize;margin-top:1px;">${h.frequency} · ${h.category}${h.linkedTaskId ? ' · <span style="color:#3b82f6;">↻ from task</span>' : ''}</div>
           </div>
         </div>
         <div style="display:flex;align-items:center;gap:8px;">
@@ -1100,7 +1241,7 @@ function emptyAction(msg, fn, label, bg, bgH) {
 function completeTask(id) {
   const t = tasks.find(x=>x.id===id);
   if (!t) return;
-  t.completed = true; t.completedAt = todayStr();
+  t.completed = true; t.completedAt = todayStr(); t.inProgress = false;
   persist(); render(); toast(`"${t.title}" completed`);
 }
 function uncompleteTask(id) {
@@ -1108,6 +1249,14 @@ function uncompleteTask(id) {
   if (!t) return;
   t.completed = false; t.completedAt = null;
   persist(); render();
+}
+function toggleInProgress(id) {
+  const t = tasks.find(x=>x.id===id);
+  if (!t || t.completed) return;
+  t.inProgress = !t.inProgress;
+  t.lastUpdatedAt = todayStr();
+  persist(); render();
+  toast(t.inProgress ? `"${t.title}" in progress` : `"${t.title}" back to pending`);
 }
 function toggleSubtask(tid, sid) {
   const t = tasks.find(x=>x.id===tid);
@@ -1126,8 +1275,15 @@ function deleteSubtask(tid, sid) {
 function confirmDeleteTask(id) {
   const t = tasks.find(x=>x.id===id);
   if (!t) return;
-  $('confirm-msg').textContent = `Delete "${t.title}"? This cannot be undone.`;
-  confirmCb = () => { tasks = tasks.filter(x=>x.id!==id); persist(); render(); sbDeleteTask(id); toast('Task deleted'); };
+  const isRecurring = t.recurrence && t.recurrence !== 'none';
+  $('confirm-msg').textContent = isRecurring
+    ? `Delete "${t.title}"? The linked habit will be kept with its history.`
+    : `Delete "${t.title}"? This cannot be undone.`;
+  confirmCb = () => {
+    if (t.linkedHabitId) { const h=habits.find(x=>x.id===t.linkedHabitId); if(h) h.linkedTaskId=null; }
+    tasks = tasks.filter(x=>x.id!==id);
+    persist(); render(); sbDeleteTask(id); toast('Task deleted');
+  };
   $('confirm-modal').style.display = 'flex';
 }
 function confirmDeleteHabit(id) {
@@ -1192,6 +1348,44 @@ function checkIn(id) {
   }
   persist(); render();
 }
+function isRecurringDueToday(task) {
+  const dow = new Date().getDay(), dom = new Date().getDate();
+  switch (task.recurrence) {
+    case 'daily':    return true;
+    case 'weekdays': return dow >= 1 && dow <= 5;
+    case 'weekly': {
+      if (!task.dueDate) return false;
+      return new Date(task.dueDate + 'T00:00:00').getDay() === dow;
+    }
+    case 'monthly': {
+      if (!task.dueDate) return false;
+      return new Date(task.dueDate + 'T00:00:00').getDate() === dom;
+    }
+    default: return false;
+  }
+}
+function isRecurringTaskDoneToday(task) {
+  if (!task.linkedHabitId) return false;
+  const h = habits.find(x=>x.id===task.linkedHabitId);
+  return h ? (h.checkIns||[]).includes(todayStr()) : false;
+}
+function checkInRecurringTask(id) {
+  const t = tasks.find(x=>x.id===id);
+  if (!t || !t.linkedHabitId) return;
+  checkIn(t.linkedHabitId);
+}
+function onRecurrenceChange() {
+  const val = $('t-recurrence').value;
+  $('t-habit-name-row').style.display = (val && val !== 'none') ? 'block' : 'none';
+  if (val !== 'none' && !$('t-habit-name').value)
+    $('t-habit-name').value = $('t-title').value.trim();
+}
+function syncHabitNameIfBlank() {
+  const el = $('t-habit-name');
+  if (!el || el.dataset.userModified === 'true') return;
+  el.value = $('t-title').value.trim();
+}
+
 function computeStreak(h) {
   let streak = 0, cur = new Date();
   const ci = h.checkIns || [];
@@ -1216,11 +1410,11 @@ function checkinsInPeriod(h, period) {
 }
 
 // ─── Task modal ───────────────────────────────────────────
-function openTaskModal(defaultProject='', editT=null) {
+function openTaskModal(defaultProject='', editT=null, defaultDue=null) {
   editingTaskId = editT?.id || null;
   subtaskFields = editT?.subtasks ? editT.subtasks.map(s=>({...s})) : [];
   selPrio = editT?.priority || 'medium';
-  selDue  = editT?.dueDate  !== undefined ? editT.dueDate : todayStr();
+  selDue  = editT?.dueDate  !== undefined ? editT.dueDate : (defaultDue !== null ? defaultDue : todayStr());
 
   $('modal-task-title').textContent = editT ? 'Edit Task' : 'Add Task';
   $('t-title').value = editT?.title || '';
@@ -1236,10 +1430,18 @@ function openTaskModal(defaultProject='', editT=null) {
 
   // due date
   $('t-due').value = selDue;
+  if ($('t-due-display')) $('t-due-display').value = formatDueDisplay(selDue);
+  closeCalPopup();
   syncChips();
 
   // priority
   updatePrioButtons(selPrio);
+
+  // recurrence
+  $('t-recurrence').value = editT?.recurrence || 'none';
+  $('t-habit-name').value = editT?.recurringHabitName || editT?.title || '';
+  $('t-habit-name').dataset.userModified = editT?.recurringHabitName ? 'true' : 'false';
+  $('t-habit-name-row').style.display = (editT?.recurrence && editT.recurrence !== 'none') ? 'block' : 'none';
 
   // subtasks
   renderSubFields();
@@ -1258,10 +1460,13 @@ function setChip(val) {
   else if (val==='tomorrow') selDue = tomorrowStr();
   else selDue = '';
   $('t-due').value = selDue;
+  if ($('t-due-display')) $('t-due-display').value = formatDueDisplay(selDue);
+  closeCalPopup();
   syncChips();
 }
 function syncChips() {
   selDue = $('t-due').value;
+  if ($('t-due-display')) $('t-due-display').value = formatDueDisplay(selDue);
   const t=todayStr(), tm=tomorrowStr();
   document.querySelectorAll('.chip').forEach(c => {
     c.classList.remove('active');
@@ -1269,6 +1474,57 @@ function syncChips() {
     if ((v==='today'&&selDue===t)||(v==='tomorrow'&&selDue===tm)||(v==='none'&&!selDue))
       c.classList.add('active');
   });
+}
+
+function formatDueDisplay(ds) {
+  if (!ds) return '';
+  const t = todayStr(), tm = tomorrowStr();
+  if (ds === t) return 'Today';
+  if (ds === tm) return 'Tomorrow';
+  const d = new Date(ds + 'T00:00:00');
+  return d.toLocaleDateString('en-GB', { day:'numeric', month:'short', year:'numeric' });
+}
+
+function toggleCalPopup() {
+  const popup = $('cal-popup');
+  const trigger = $('t-due-display');
+  if (!popup || !trigger) return;
+  if (popup.style.display !== 'none') { popup.style.display = 'none'; return; }
+  const cur = selDue ? new Date(selDue + 'T00:00:00') : new Date();
+  calYear = cur.getFullYear(); calMonth = cur.getMonth();
+  renderCalGrid();
+  const rect = trigger.getBoundingClientRect();
+  popup.style.top  = (rect.bottom + 4) + 'px';
+  popup.style.left = rect.left + 'px';
+  popup.style.display = 'block';
+}
+function closeCalPopup() { const p=$('cal-popup'); if(p) p.style.display='none'; }
+function calNav(dir) {
+  calMonth += dir;
+  if (calMonth > 11) { calMonth = 0; calYear++; }
+  if (calMonth < 0)  { calMonth = 11; calYear--; }
+  renderCalGrid();
+}
+const CAL_MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+const CAL_DAYS   = ['Su','Mo','Tu','We','Th','Fr','Sa'];
+function renderCalGrid() {
+  $('cal-month-label').textContent = `${CAL_MONTHS[calMonth]} ${calYear}`;
+  const today = todayStr();
+  const firstDay = new Date(calYear, calMonth, 1).getDay();
+  const daysInMonth = new Date(calYear, calMonth + 1, 0).getDate();
+  let html = CAL_DAYS.map(d=>`<div style="font-size:9px;color:#555;font-weight:600;padding:3px 0;">${d}</div>`).join('');
+  for (let i=0; i<firstDay; i++) html += `<div></div>`;
+  for (let d=1; d<=daysInMonth; d++) {
+    const ds = `${calYear}-${String(calMonth+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    const isSel = ds === selDue, isToday = ds === today, isPast = ds < today;
+    html += `<button onclick="calPickDate('${ds}')" style="padding:5px 2px;border-radius:6px;border:none;cursor:pointer;font-size:12px;font-family:inherit;width:100%;transition:background .1s;background:${isSel?'#db4035':isToday?'rgba(219,64,53,.15)':'transparent'};color:${isSel?'#fff':isToday?'#db4035':isPast?'#444':'#e0e0e0'};font-weight:${isSel||isToday?'600':'400'};" onmouseenter="if(!${isSel})this.style.background='#252525';" onmouseleave="if(!${isSel})this.style.background='${isSel?'#db4035':isToday?'rgba(219,64,53,.15)':'transparent'}';">${d}</button>`;
+  }
+  $('cal-grid').innerHTML = html;
+}
+function calPickDate(ds) {
+  selDue = ds; $('t-due').value = ds;
+  if ($('t-due-display')) $('t-due-display').value = formatDueDisplay(ds);
+  syncChips(); closeCalPopup();
 }
 
 function setPrio(p) { selPrio=p; updatePrioButtons(p); }
@@ -1311,15 +1567,49 @@ function saveTask() {
   $('title-err').style.display='none';
 
   const subs = subtaskFields.filter(s=>s.title.trim()).map(s=>({...s, title:s.title.trim()}));
+
+  // Recurrence logic
+  const recurrence = $('t-recurrence').value || 'none';
+  const recurringHabitName = recurrence !== 'none'
+    ? ($('t-habit-name').value.trim() || title) : null;
+  const existingTask = editingTaskId ? tasks.find(x=>x.id===editingTaskId) : null;
+  const oldLinkedHabitId = existingTask?.linkedHabitId || null;
+  const oldRecurrence = existingTask?.recurrence || 'none';
+  let linkedHabitId = oldLinkedHabitId;
+  const userId = currentUser?.id || '';
+
+  if (recurrence !== 'none' && (!editingTaskId || oldRecurrence === 'none')) {
+    // Case A: new recurrence — create linked habit
+    const newHabit = { id:uid(), name:recurringHabitName, frequency:'daily',
+      category:'productivity', checkIns:[], checkInsByUser:{ [userId]:[] },
+      shared:false, createdBy:userId, owner:userId, createdAt:todayStr(), linkedTaskId:'PENDING' };
+    habits.push(newHabit);
+    linkedHabitId = newHabit.id;
+  } else if (recurrence !== 'none' && oldLinkedHabitId) {
+    // Case B: update habit name
+    const h = habits.find(x=>x.id===oldLinkedHabitId);
+    if (h) h.name = recurringHabitName;
+  } else if (recurrence === 'none' && oldLinkedHabitId) {
+    // Case C: recurrence turned off — orphan the habit
+    const h = habits.find(x=>x.id===oldLinkedHabitId);
+    if (h) h.linkedTaskId = null;
+    linkedHabitId = null;
+  }
+
   const data = { title, dueDate:selDue, priority:selPrio,
-                 description:$('t-desc').value.trim(), project:$('t-project').value, subtasks:subs };
+                 description:$('t-desc').value.trim(), project:$('t-project').value, subtasks:subs,
+                 recurrence, linkedHabitId, recurringHabitName };
 
   if (editingTaskId) {
     const i = tasks.findIndex(x=>x.id===editingTaskId);
     if (i>=0) tasks[i] = {...tasks[i], ...data, lastUpdatedAt:todayStr()};
+    if (linkedHabitId) { const h=habits.find(x=>x.id===linkedHabitId); if(h&&h.linkedTaskId==='PENDING') h.linkedTaskId=editingTaskId; }
   } else {
-    tasks.unshift({ id:uid(), ...data, completed:false, completedAt:null, createdAt:todayStr(),
-                    owner: currentUser?.id || '', lastUpdatedAt:todayStr() });
+    const newId = uid();
+    tasks.unshift({ id:newId, ...data, completed:false, completedAt:null, inProgress:false,
+                    createdAt:todayStr(), owner:userId, lastUpdatedAt:todayStr(), sortOrder:0 });
+    tasks.forEach((t, i) => t.sortOrder = i);
+    if (linkedHabitId) { const h=habits.find(x=>x.id===linkedHabitId); if(h&&h.linkedTaskId==='PENDING') h.linkedTaskId=newId; }
   }
   persist(); closeTaskModal(); render(); toast(editingTaskId ? 'Task updated' : 'Task added');
 }
@@ -1564,6 +1854,98 @@ async function showGeneratedCode() {
   renderSettings($('main'));
 }
 
+// ─── Calendar view ────────────────────────────────────────
+function addTaskBtnWithDate(dateStr) {
+  openTaskModal('', null, dateStr);
+}
+
+function renderCalendar(m) {
+  const days = getWeekDays(calendarWeekOffset);
+  const todStr = todayStr();
+  const weekStart = dateToStr(days[0]);
+  const weekEnd   = dateToStr(days[6]);
+
+  const fmtDay = d => d.toLocaleDateString('en-GB', { weekday:'short', day:'numeric', month:'short' });
+  const rangeLabel = `${days[0].toLocaleDateString('en-GB',{day:'numeric',month:'short'})} – ${days[6].toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'})}`;
+
+  const noDateTasks  = sortByPriority(tasks.filter(t => !t.completed && !t.dueDate));
+  const overdueTasks = sortByPriority(tasks.filter(t => !t.completed && t.dueDate && t.dueDate < weekStart));
+
+  const dayGroups = days.map(d => {
+    const ds = dateToStr(d);
+    return { date: d, dateStr: ds, dayTasks: sortByPriority(tasks.filter(t => !t.completed && t.dueDate === ds)) };
+  });
+
+  const navBtnStyle = 'padding:5px 12px;border-radius:7px;background:none;border:1px solid #2a2a2a;color:#888;cursor:pointer;font-size:12px;font-family:inherit;transition:border-color .12s,color .12s;';
+  const addBtnStyle = 'display:flex;align-items:center;gap:6px;padding:5px 6px;font-size:12px;color:#484848;background:none;border:none;cursor:pointer;border-radius:6px;font-family:inherit;transition:color .15s;margin-top:6px;';
+
+  function sectionDropAttrs(dateStr) {
+    return `ondragover="event.preventDefault();this.classList.add('drag-over')" ondragleave="this.classList.remove('drag-over')" ondrop="onDateSectionDrop('${dateStr}',event)"`;
+  }
+
+  function renderSectionTasks(taskList, dateStr) {
+    return taskList.map(t => taskRowHTML(t)).join('') +
+      `<button style="${addBtnStyle}" onclick="addTaskBtnWithDate('${dateStr}')"
+        onmouseenter="this.style.color='#e8e8e8'" onmouseleave="this.style.color='#484848'">
+        <svg style="width:12px;height:12px;color:#db4035;" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 4v16m8-8H4"/></svg>
+        Add task
+      </button>`;
+  }
+
+  let html = `<div style="max-width:860px;margin:0 auto;padding:36px 40px;">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:28px;flex-wrap:wrap;">
+      <h1 style="font-size:28px;font-weight:700;margin:0;flex:1;">Upcoming</h1>
+      <button style="${navBtnStyle}" onclick="calendarWeekOffset--;render()"
+        onmouseenter="this.style.borderColor='#444';this.style.color='#e8e8e8'" onmouseleave="this.style.borderColor='#2a2a2a';this.style.color='#888'">← Prev</button>
+      <span style="font-size:13px;color:#666;">${rangeLabel}</span>
+      <button style="${navBtnStyle}" onclick="calendarWeekOffset++;render()"
+        onmouseenter="this.style.borderColor='#444';this.style.color='#e8e8e8'" onmouseleave="this.style.borderColor='#2a2a2a';this.style.color='#888'">Next →</button>
+      ${calendarWeekOffset !== 0 ? `<button style="${navBtnStyle}color:#db4035;border-color:rgba(219,64,53,.4);" onclick="calendarWeekOffset=0;render()"
+        onmouseenter="this.style.borderColor='#db4035'" onmouseleave="this.style.borderColor='rgba(219,64,53,.4)'">Today</button>` : ''}
+    </div>
+
+    <!-- No Date section (TOP per user requirement) -->
+    <div class="date-section-drop" ${sectionDropAttrs('')} style="margin-bottom:22px;padding:12px 10px;border-radius:10px;background:#181818;border:1px solid #222;">
+      <div style="font-size:11px;font-weight:600;color:#555;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;">No Date</div>
+      ${noDateTasks.length ? renderSectionTasks(noDateTasks, '') : `<p style="color:#333;font-size:13px;margin:4px 0 6px;">No undated tasks</p>
+        <button style="${addBtnStyle}" onclick="addTaskBtnWithDate('')"
+          onmouseenter="this.style.color='#e8e8e8'" onmouseleave="this.style.color='#484848'">
+          <svg style="width:12px;height:12px;color:#db4035;" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 4v16m8-8H4"/></svg>
+          Add task
+        </button>`}
+    </div>
+
+    ${overdueTasks.length ? `
+    <div class="date-section-drop" ${sectionDropAttrs('')} style="margin-bottom:22px;border-left:2px solid #f97316;padding:10px 10px 10px 12px;border-radius:0 8px 8px 0;background:#141414;">
+      <div style="font-size:11px;font-weight:600;color:#f97316;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;">Overdue · ${overdueTasks.length}</div>
+      ${overdueTasks.map(t => taskRowHTML(t, true)).join('')}
+    </div>` : ''}
+
+    ${dayGroups.map(({date, dateStr, dayTasks}) => {
+      const isToday = dateStr === todStr;
+      const isPast  = dateStr < todStr && dateStr >= weekStart;
+      return `
+      <div class="date-section-drop" ${sectionDropAttrs(dateStr)}
+           style="margin-bottom:18px;padding:10px 10px;border-radius:10px;border:1px solid ${isToday ? 'rgba(219,64,53,.25)' : '#1c1c1c'};background:${isToday ? 'rgba(219,64,53,.04)' : 'transparent'};${isToday ? 'border-left:3px solid #db4035;' : ''}">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+          <span style="font-size:11px;font-weight:600;color:${isToday ? '#db4035' : isPast ? '#555' : '#666'};text-transform:uppercase;letter-spacing:.06em;">${fmtDay(date)}</span>
+          ${isToday ? '<span style="background:#db4035;color:#fff;font-size:10px;padding:1px 7px;border-radius:10px;font-weight:600;">Today</span>' : ''}
+          ${dayTasks.length ? `<span style="font-size:11px;color:#444;margin-left:2px;">${dayTasks.length}</span>` : ''}
+        </div>
+        ${dayTasks.length ? renderSectionTasks(dayTasks, dateStr) :
+          `<p style="color:#2a2a2a;font-size:12px;margin:0 0 4px;">—</p>
+          <button style="${addBtnStyle}" onclick="addTaskBtnWithDate('${dateStr}')"
+            onmouseenter="this.style.color='#e8e8e8'" onmouseleave="this.style.color='#484848'">
+            <svg style="width:12px;height:12px;color:#db4035;" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 4v16m8-8H4"/></svg>
+            Add task
+          </button>`}
+      </div>`;
+    }).join('')}
+  </div>`;
+
+  m.innerHTML = html;
+}
+
 // ─── Sync status ──────────────────────────────────────────
 function updateSyncStatus(state) {
   const dot   = $('sync-dot');
@@ -1601,6 +1983,7 @@ async function manualSync() {
 // ─── Keyboard shortcuts ───────────────────────────────────
 document.addEventListener('keydown', e=>{
   if (e.key==='Escape') {
+    closeCalPopup();
     closeTaskModal();
     $('habit-modal').style.display='none';
     $('goal-modal').style.display='none';
@@ -1609,6 +1992,14 @@ document.addEventListener('keydown', e=>{
   }
   if ((e.ctrlKey||e.metaKey) && e.key==='k') { e.preventDefault(); nav('search'); }
   if ((e.ctrlKey||e.metaKey) && e.key==='n') { e.preventDefault(); openTaskModal(); }
+});
+
+// ─── Close calendar on outside click ─────────────────────
+document.addEventListener('click', function(e) {
+  const popup = $('cal-popup');
+  const trigger = $('t-due-display');
+  if (!popup || popup.style.display === 'none') return;
+  if (!popup.contains(e.target) && e.target !== trigger) closeCalPopup();
 });
 
 // ─── Enter key in modals ──────────────────────────────────

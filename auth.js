@@ -159,6 +159,12 @@ async function handleInviteRedeem() {
 }
 
 async function onAuthSuccess(isNew) {
+  if (isNew) {
+    // Clear any stale localStorage cache from a previous user's session
+    ['tf_tasks','tf_habits','tf_goals','tf_shared_lists','tf_projects'].forEach(k => localStorage.removeItem(k));
+    projects = [];
+    saveProjects();
+  }
   await load();
   migrateDataToUser(currentUser.id);
   hideAuthModal();
